@@ -142,7 +142,8 @@ fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], 
 
     slices
         .with_policy(policy)
-        .partial_for_each(|mut slices, limit| {
+        // .partial_for_each(|mut slices, limit| {
+        .work(|mut slices, limit| {
             {
                 let mut left_i = slices.left.iter();
                 let mut right_i = slices.right.iter();
@@ -244,6 +245,8 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 acc
             },
         );
+        // let (size1, size2) = (v.0[0].len(), v.1[0].len());
+        // println!("Spliting a slice of size {} into two slices of size {} and of size {} ", size1 + size2, size1, size2);
         (
             SortingSlices { s: v.0, i: self.i },
             SortingSlices { s: v.1, i: self.i },
@@ -257,7 +260,13 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
         self.s[0].base_length()
     }
     fn divide(self) -> (Self, Self) {
-        let mid = self.s[0].base_length() / 2;
+        let size = self.s[0].base_length();
+        // we are giving a bit more to the first thread
+        let mid = if size % 2 == 0 {
+            self.s[0].base_length() / 2
+        } else {
+            self.s[0].base_length() / 2 + 1
+        };
         self.split_at(mid)
     }
 }
@@ -278,10 +287,10 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// use rayon_adaptive::adaptive_sort;
 /// let v: Vec<u32> = (0..100_000).collect();
 /// let mut inverted_v: Vec<u32> = (0..100_000).rev().collect();
-/// adaptive_sort(&mut inverted_v);
+/// adaptive_sort(&mut inverted_v, 5);
 /// assert_eq!(v, inverted_v);
 /// ```
-pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut [T]) {
+pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut [T], block_size: usize) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -289,12 +298,19 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut 
         tmp_slice2.set_len(slice.base_length());
     }
 
+    let size = slice.len();
+    // Computing the true number of recursions
+    let level = ((size as f64) / (block_size as f64)).log2() as usize + 0;
+    let new_block_size = size / 2_usize.pow(level as u32) + 1;
+    println!("Actual number of recursions: {}, new block size: {}", level, new_block_size);
+
+
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
     };
 
-    let mut result_slices = slices.map_reduce(
+    let mut result_slices = slices.with_policy(Policy::Join(new_block_size)).map_reduce(
         |mut slices| {
             slices.s[slices.i].sort();
             slices
