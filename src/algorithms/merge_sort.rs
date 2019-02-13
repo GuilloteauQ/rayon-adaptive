@@ -300,8 +300,16 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut 
 
     let size = slice.len();
     // Computing the true number of recursions
-    let level = ((size as f64) / (block_size as f64)).log2() as usize + 0;
-    let new_block_size = size / 2_usize.pow(level as u32) + 1;
+    let level = ((size as f64) / (block_size as f64)).log2() as usize + 1;
+
+    let tmp_new_block_size: f64 = (size as f64) / 2_f64.powf(level as f64);
+    let new_block_size = if tmp_new_block_size.fract() > 0.0 {
+        size / 2_usize.pow(level as u32) + 1
+    } else {
+        size / 2_usize.pow(level as u32)
+    };
+
+
     println!("Actual number of recursions: {}, new block size: {}", level, new_block_size);
 
 
