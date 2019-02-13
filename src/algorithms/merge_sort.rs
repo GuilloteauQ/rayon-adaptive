@@ -4,6 +4,7 @@ use crate::traits::{BasicPower, BlockedPower};
 use crate::{fuse_slices, EdibleSlice, EdibleSliceMut, Policy};
 use std;
 use std::iter::repeat;
+use rayon_logs::sequential_task;
 
 // main related code
 
@@ -171,6 +172,8 @@ fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], 
 struct SortingSlices<'a, T: 'a> {
     s: Vec<&'a mut [T]>,
     i: usize,
+    min_block_size: usize,
+    block_size_to_give: usize,
 }
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
@@ -214,6 +217,8 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         SortingSlices {
             s: fused_slices,
             i: destination_index,
+            min_block_size: left.min_block_size,
+            block_size_to_give: 0,
         }
     }
 
@@ -245,11 +250,11 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 acc
             },
         );
-        // let (size1, size2) = (v.0[0].len(), v.1[0].len());
-        // println!("Spliting a slice of size {} into two slices of size {} and of size {} ", size1 + size2, size1, size2);
+        let (size1, size2) = (v.0[0].len(), v.1[0].len());
+        let block_size = self.min_block_size;
         (
-            SortingSlices { s: v.0, i: self.i },
-            SortingSlices { s: v.1, i: self.i },
+            SortingSlices { s: v.0, i: self.i, min_block_size: block_size, block_size_to_give: new_block_size_to_give(size1, block_size)},
+            SortingSlices { s: v.1, i: self.i, min_block_size: block_size, block_size_to_give: new_block_size_to_give(size2, block_size)},
         )
     }
 }
@@ -261,19 +266,23 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
     }
     fn divide(self) -> (Self, Self) {
         let size = self.s[0].base_length();
-        // we are giving a bit more to the first thread
-        let mid = if size % 2 == 0 {
-            self.s[0].base_length() / 2
-        } else {
-            self.s[0].base_length() / 2 + 1
-        };
-        self.split_at(mid)
+        let split_index = if size - self.block_size_to_give;
+        self.split_at(split_index)
     }
 }
 
 impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices<'a, T> {
     fn divide_at(self, i: usize) -> (Self, Self) {
         self.split_at(i)
+    }
+}
+
+/// Returns the new size of the block to give if stolen
+fn new_block_size_to_give(size: usize, block_size: usize) -> usize {
+    if size > block_size {
+        block_size * 2_usize.pow((size as f64 / block_size as f64).log2() as u32) / 2
+    } else {
+        block_size
     }
 }
 
@@ -299,28 +308,22 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut 
     }
 
     let size = slice.len();
-    // Computing the true number of recursions
-    let level = ((size as f64) / (block_size as f64)).log2() as usize + 1;
-
-    let tmp_new_block_size: f64 = (size as f64) / 2_f64.powf(level as f64);
-    let new_block_size = if tmp_new_block_size.fract() > 0.0 {
-        size / 2_usize.pow(level as u32) + 1
-    } else {
-        size / 2_usize.pow(level as u32)
-    };
-
-
-    println!("Actual number of recursions: {}, new block size: {}", level, new_block_size);
-
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
+        min_block_size: block_size,
+        block_size_to_give: new_block_size_to_give(size, block_size),
     };
+    println!("{}", slices.block_size_to_give);
 
-    let mut result_slices = slices.with_policy(Policy::Join(new_block_size)).map_reduce(
+    let mut result_slices = slices.map_reduce(
         |mut slices| {
-            slices.s[slices.i].sort();
+            sequential_task(
+                "SORT",
+                slices.s[slices.i].len(),
+                || slices.s[slices.i].sort()
+            );
             slices
         },
         |s1, s2| s1.fuse_with_policy(s2, Default::default()),
