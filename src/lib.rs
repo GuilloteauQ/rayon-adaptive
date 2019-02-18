@@ -38,6 +38,7 @@ pub mod smallchannel;
 mod algorithms;
 pub use crate::algorithms::infix_solvers::*;
 pub use crate::algorithms::merge_sort::adaptive_sort;
+pub use crate::algorithms::merge_sort::adaptive_sort_with_policies;
 pub use crate::algorithms::prefix::adaptive_prefix;
 
 /// Execute potentially `oper_a` and `oper_b` in parallel like in a standard join.
