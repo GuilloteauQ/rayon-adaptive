@@ -110,9 +110,20 @@ fn speedup_by_processors(
         .collect()
 }
 
-fn main() {
-    // Range of the number of processors
+fn bench_speedup<S: AsRef<str>>(f: Box<Fn(usize) -> Vec<u32>>, label: S) {
+    // TODO: zip everything and plot data
     let procs: Vec<usize> = (1..3).collect();
-    let results: Vec<(usize, f64)> = speedup_by_processors(&procs, Box::new(|x| random_vec(x)), 100, 100000, Policy::JoinContext(1000), Policy::Join(1000));
-    println!("{:?}", results);
+    let sorting_policies: Vec<Policy> = vec![Policy::Join(1000), Policy::JoinContext(1000)];
+    let fusing_policies: Vec<Policy> = vec![Policy::Join(1000), Policy::JoinContext(1000)];
+    let sizes: Vec<usize> = vec![5000, 10000, 25000, 50000, 100000];
+
+    let results: Vec<(usize, f64)> = speedup_by_processors(&procs, f, 100, sizes[0], sorting_policies[0], fusing_policies[0]);
+    println!("{}: {:?}", label.as_ref(), results);
+}
+
+fn main() {
+    bench_speedup(Box::new(random_vec), "Random");
+    bench_speedup(Box::new(sorted_vec), "Sorted");
+    bench_speedup(Box::new(reversed_vec), "Reversed");
+    bench_speedup(Box::new(random_vec_with_duplicates), "Random with duplicates");
 }
