@@ -7,7 +7,7 @@ use crate::{Divisible, DivisibleIntoBlocks};
 use std::iter::{empty, once, Empty};
 use std::marker::PhantomData;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Policy {
     /// Adaptive scheduling policy with dynamic block sizes.
     DefaultPolicy,

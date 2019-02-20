@@ -1,9 +1,11 @@
+use itertools::iproduct;
+use rand::Rng;
+use rayon::ThreadPoolBuilder;
 use rayon_adaptive::adaptive_sort_with_policies;
 use rayon_adaptive::Policy;
-extern crate time;
+use std::iter::once;
+use std::iter::repeat_with;
 use time::precise_time_ns;
-extern crate rand;
-use rand::Rng;
 
 /// Return a random vector of values between a min and a max values
 fn random_vec_with_range(size: usize, min_value: u32, max_value: u32) -> Vec<u32> {
@@ -36,6 +38,20 @@ fn random_vec(size: usize) -> Vec<u32> {
 }
 
 // -------------------------------  Functions to make measures ------------------------------------
+//
+
+fn bench<INPUT, I, F>(init_fn: I, timed_fn: F) -> u64
+where
+    INPUT: Sized,
+    I: Fn() -> INPUT,
+    F: Fn(INPUT),
+{
+    let input = init_fn();
+    let begin_time: u64 = precise_time_ns();
+    timed_fn(input);
+    let end_time: u64 = precise_time_ns();
+    end_time - begin_time
+}
 
 /// Measure the execution time of the adaptive sort given the policies
 fn measure_adaptive_sort(original_vec: &Vec<u32>, sort_policy: Policy, fuse_policy: Policy) -> u64 {
@@ -57,73 +73,74 @@ fn measure_sequential_sort(original_vec: &Vec<u32>) -> u64 {
 
 /// Measure the speedup (time of the adaptive sort / time of the sequential sort)
 /// f is the function that will generate the arrays
-fn measure_speedup(
-    f: &Box<Fn(usize) -> Vec<u32>>,
+fn measure_speedup<INPUT: Sized, I: Fn() -> INPUT, F: Fn(INPUT), F2: Fn(INPUT)>(
+    init_fn: I,
+    seq_fn: F,
+    par_fn: F2,
     iterations: usize,
-    vec_size: usize,
-    sort_policy: Policy,
-    fuse_policy: Policy,
-    threads_num: usize,
 ) -> f64 {
-    // ----- Creation of a pool with the given number of threads -----
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads_num)
-        .build()
-        .expect("Failed to build the pool");
-    let mut times_adaptive_sort: Vec<u64> = Vec::with_capacity(iterations);
-    let mut times_sequential_sort: Vec<u64> = Vec::with_capacity(iterations);
-    for _ in 0..iterations {
-        let v = f(vec_size);
-        times_adaptive_sort
-            .push(pool.install(|| measure_adaptive_sort(&v, sort_policy, fuse_policy)));
-        times_sequential_sort.push(pool.install(|| measure_sequential_sort(&v)));
-    }
-    compute_mean(times_adaptive_sort, times_sequential_sort)
+    repeat_with(|| {
+        let parallel_time = bench(&init_fn, &par_fn);
+        let sequential_time = bench(&init_fn, &seq_fn);
+        parallel_time as f64 / (sequential_time as f64 * iterations as f64)
+    })
+    .take(iterations)
+    .sum()
 }
 
-/// Computes the mean
-fn compute_mean(t1: Vec<u64>, t2: Vec<u64>) -> f64 {
-    let size = t1.len() as f64;
-    t1.iter()
-        .zip(t2.iter())
-        .map(|(&a, &b)| (a as f64) / (b as f64 * size))
-        .sum()
-}
-
-/// Returns a vec of pair with the number of threads and the speedup
-fn speedup_by_processors(
-    procs_range: &Vec<usize>,
-    f: Box<Fn(usize) -> Vec<u32>>,
+fn speedup_by_processors<
+    INPUT: Sized,
+    I: Fn() -> INPUT + Send + Copy + Sync,
+    F: Fn(INPUT) + Send + Copy + Sync,
+    F2: Fn(INPUT) + Send + Copy + Sync,
+    THREADS: IntoIterator<Item = usize>,
+>(
+    init_fn: I,
+    seq_fn: F,
+    par_fn: F2,
     iterations: usize,
-    vec_size: usize,
-    sort_policy: Policy,
-    fuse_policy: Policy,
+    threads_numbers: THREADS,
 ) -> Vec<(usize, f64)> {
-    procs_range
-        .iter()
-        .map(|&threads_num| {
+    threads_numbers
+        .into_iter()
+        .map(|threads| {
+            let pool = ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("building pool failed");
             (
-                threads_num,
-                measure_speedup(&f, iterations, vec_size, sort_policy, fuse_policy, threads_num),
+                threads,
+                pool.install(|| measure_speedup(init_fn, seq_fn, par_fn, iterations)),
             )
         })
         .collect()
 }
 
-fn bench_speedup<S: AsRef<str>>(f: Box<Fn(usize) -> Vec<u32>>, label: S) {
-    // TODO: zip everything and plot data
-    let procs: Vec<usize> = (1..3).collect();
-    let sorting_policies: Vec<Policy> = vec![Policy::Join(1000), Policy::JoinContext(1000)];
-    let fusing_policies: Vec<Policy> = vec![Policy::Join(1000), Policy::JoinContext(1000)];
-    let sizes: Vec<usize> = vec![5000, 10000, 25000, 50000, 100000];
-
-    let results: Vec<(usize, f64)> = speedup_by_processors(&procs, f, 100, sizes[0], sorting_policies[0], fusing_policies[0]);
-    println!("{}: {:?}", label.as_ref(), results);
-}
-
 fn main() {
-    bench_speedup(Box::new(random_vec), "Random");
-    bench_speedup(Box::new(sorted_vec), "Sorted");
-    bench_speedup(Box::new(reversed_vec), "Reversed");
-    bench_speedup(Box::new(random_vec_with_duplicates), "Random with duplicates");
+    let iterations = 100;
+    let threads: Vec<usize> = (1..3).collect();
+    let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
+    let input_generators = vec![
+        (Box::new(random_vec) as Box<Fn(usize) -> Vec<u32>>, "random"),
+        (Box::new(sorted_vec) as Box<Fn(usize) -> Vec<u32>>, "sorted"),
+        (
+            Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32>>,
+            "reversed",
+        ),
+    ];
+    let algorithms: Vec<_> = once((
+        Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>)>,
+        "sequential".into(),
+    ))
+    .chain(
+        iproduct!(policies.clone(), policies).map(|(sort_policy, fuse_policy)| {
+            (
+                Box::new(move |mut v: Vec<u32>| {
+                    adaptive_sort_with_policies(&mut v, sort_policy, fuse_policy)
+                }) as Box<Fn(Vec<u32>)>,
+                format!("{:?}/{:?}", sort_policy, fuse_policy),
+            )
+        }),
+    )
+    .collect();
 }
