@@ -4,7 +4,6 @@ use crate::traits::{BasicPower, BlockedPower};
 use crate::{fuse_slices, EdibleSlice, EdibleSliceMut, Policy};
 use std;
 use std::iter::repeat;
-use rayon_logs::sequential_task;
 
 // main related code
 
@@ -143,8 +142,7 @@ fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], 
 
     slices
         .with_policy(policy)
-        // .partial_for_each(|mut slices, limit| {
-        .work(|mut slices, limit| {
+        .partial_for_each(|mut slices, limit| {
             {
                 let mut left_i = slices.left.iter();
                 let mut right_i = slices.right.iter();
@@ -172,8 +170,6 @@ fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], 
 struct SortingSlices<'a, T: 'a> {
     s: Vec<&'a mut [T]>,
     i: usize,
-    min_block_size: usize,
-    block_size_to_give: usize,
 }
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
@@ -208,8 +204,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             }
             destination_index
         };
-        let fused_slices: Vec<_> = left
-            .s
+        let fused_slices: Vec<_> = left.s
             .into_iter()
             .zip(right.s.into_iter())
             .map(|(left_s, right_s)| fuse_slices(left_s, right_s))
@@ -217,8 +212,6 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         SortingSlices {
             s: fused_slices,
             i: destination_index,
-            min_block_size: left.min_block_size,
-            block_size_to_give: 0,
         }
     }
 
@@ -250,11 +243,9 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 acc
             },
         );
-        let (size1, size2) = (v.0[0].len(), v.1[0].len());
-        let block_size = self.min_block_size;
         (
-            SortingSlices { s: v.0, i: self.i, min_block_size: block_size, block_size_to_give: new_block_size_to_give(size1, block_size)},
-            SortingSlices { s: v.1, i: self.i, min_block_size: block_size, block_size_to_give: new_block_size_to_give(size2, block_size)},
+            SortingSlices { s: v.0, i: self.i },
+            SortingSlices { s: v.1, i: self.i },
         )
     }
 }
@@ -265,24 +256,14 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
         self.s[0].base_length()
     }
     fn divide(self) -> (Self, Self) {
-        let size = self.s[0].base_length();
-        let split_index = if size - self.block_size_to_give;
-        self.split_at(split_index)
+        let mid = self.s[0].base_length() / 2;
+        self.split_at(mid)
     }
 }
 
 impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices<'a, T> {
     fn divide_at(self, i: usize) -> (Self, Self) {
         self.split_at(i)
-    }
-}
-
-/// Returns the new size of the block to give if stolen
-fn new_block_size_to_give(size: usize, block_size: usize) -> usize {
-    if size > block_size {
-        block_size * 2_usize.pow((size as f64 / block_size as f64).log2() as u32) / 2
-    } else {
-        block_size
     }
 }
 
@@ -296,10 +277,10 @@ fn new_block_size_to_give(size: usize, block_size: usize) -> usize {
 /// use rayon_adaptive::adaptive_sort;
 /// let v: Vec<u32> = (0..100_000).collect();
 /// let mut inverted_v: Vec<u32> = (0..100_000).rev().collect();
-/// adaptive_sort(&mut inverted_v, 5);
+/// adaptive_sort(&mut inverted_v);
 /// assert_eq!(v, inverted_v);
 /// ```
-pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut [T], block_size: usize) {
+pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -307,26 +288,49 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync + std::fmt::Debug>(slice: &mut 
         tmp_slice2.set_len(slice.base_length());
     }
 
-    let size = slice.len();
+    let slices = SortingSlices {
+        s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
+        i: 0,
+    };
+
+    let mut result_slices = slices.map_reduce(
+        |mut slices| {
+            slices.s[slices.i].sort();
+            slices
+        },
+        |s1, s2| s1.fuse_with_policy(s2, Default::default()),
+    );
+
+    if result_slices.i != 0 {
+        let i = result_slices.i;
+        let (destination, source) = result_slices.mut_couple(0, i);
+        destination.copy_from_slice(source);
+    }
+}
+
+pub fn adaptive_sort_with_policies<T: Ord + Copy + Send + Sync + std::fmt::Debug>(
+    slice: &mut [T],
+    sort_policy: Policy,
+    fuse_policy: Policy,
+) {
+    let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
+    let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
+    unsafe {
+        tmp_slice1.set_len(slice.base_length());
+        tmp_slice2.set_len(slice.base_length());
+    }
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
-        min_block_size: block_size,
-        block_size_to_give: new_block_size_to_give(size, block_size),
     };
-    println!("{}", slices.block_size_to_give);
 
-    let mut result_slices = slices.map_reduce(
+    let mut result_slices = slices.with_policy(sort_policy).map_reduce(
         |mut slices| {
-            sequential_task(
-                "SORT",
-                slices.s[slices.i].len(),
-                || slices.s[slices.i].sort()
-            );
+            slices.s[slices.i].sort();
             slices
         },
-        |s1, s2| s1.fuse_with_policy(s2, Default::default()),
+        |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
     );
 
     if result_slices.i != 0 {
