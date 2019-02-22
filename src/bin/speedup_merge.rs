@@ -88,8 +88,10 @@ fn times_by_processors<
 }
 
 fn main() {
-    let iterations = 10;
-    let sizes = vec![10_000, 20_000, 50_000, 100_000];
+    let iterations = 100;
+    let sizes = vec![
+        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000,
+    ];
     let threads: Vec<usize> = (1..5).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
@@ -107,7 +109,7 @@ fn main() {
         ),
         (
             Box::new(random_vec_with_duplicates) as Box<Fn(usize) -> Vec<u32> + Sync>,
-            "random with duplicates",
+            "random_with_duplicates",
         ),
     ];
     let algorithms: Vec<_> = iproduct!(policies.clone(), policies)
@@ -125,7 +127,8 @@ fn main() {
         )))
         .collect();
 
-    for (generator_f, generator_name) in input_generators.iter().take(1) {
+    for (generator_f, generator_name) in input_generators.iter() {
+        println!(">>> {}", generator_name);
         let mut file = File::create(format!("{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
