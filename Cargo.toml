@@ -26,6 +26,7 @@ smallvec = "*"
 hwloc = "*"
 libc = "*"
 crossbeam = "*"
+gnuplot = "*"
 [[bench]]
 name = "merge_sort"
 harness = false

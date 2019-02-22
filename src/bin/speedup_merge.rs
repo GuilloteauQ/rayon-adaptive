@@ -1,10 +1,11 @@
-use itertools::iproduct;
+use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon::ThreadPoolBuilder;
 use rayon_adaptive::adaptive_sort_with_policies;
 use rayon_adaptive::Policy;
-use std::iter::once;
-use std::iter::repeat_with;
+use std::fs::File;
+use std::io::prelude::*;
+use std::iter::{once, repeat_with};
 use time::precise_time_ns;
 
 /// Return a random vector of values between a min and a max values
@@ -53,94 +54,110 @@ where
     end_time - begin_time
 }
 
-/// Measure the execution time of the adaptive sort given the policies
-fn measure_adaptive_sort(original_vec: &Vec<u32>, sort_policy: Policy, fuse_policy: Policy) -> u64 {
-    let mut v = original_vec.clone();
-    let begin_time: u64 = precise_time_ns();
-    adaptive_sort_with_policies(&mut v, sort_policy, fuse_policy);
-    let end_time: u64 = precise_time_ns();
-    end_time - begin_time
-}
-
-/// Measure the execution time of the sequential sort
-fn measure_sequential_sort(original_vec: &Vec<u32>) -> u64 {
-    let mut v = original_vec.clone();
-    let begin_time: u64 = precise_time_ns();
-    v.sort();
-    let end_time: u64 = precise_time_ns();
-    end_time - begin_time
-}
-
 /// Measure the speedup (time of the adaptive sort / time of the sequential sort)
 /// f is the function that will generate the arrays
-fn measure_speedup<INPUT: Sized, I: Fn() -> INPUT, F: Fn(INPUT), F2: Fn(INPUT)>(
+fn average_times<INPUT: Sized, I: Fn() -> INPUT, F: Fn(INPUT)>(
     init_fn: I,
-    seq_fn: F,
-    par_fn: F2,
+    timed_fn: F,
     iterations: usize,
 ) -> f64 {
-    repeat_with(|| {
-        let parallel_time = bench(&init_fn, &par_fn);
-        let sequential_time = bench(&init_fn, &seq_fn);
-        parallel_time as f64 / (sequential_time as f64 * iterations as f64)
-    })
-    .take(iterations)
-    .sum()
+    repeat_with(|| bench(&init_fn, &timed_fn))
+        .take(iterations)
+        .sum::<u64>() as f64
+        / iterations as f64
 }
 
-fn speedup_by_processors<
+fn times_by_processors<
     INPUT: Sized,
     I: Fn() -> INPUT + Send + Copy + Sync,
     F: Fn(INPUT) + Send + Copy + Sync,
-    F2: Fn(INPUT) + Send + Copy + Sync,
     THREADS: IntoIterator<Item = usize>,
 >(
     init_fn: I,
-    seq_fn: F,
-    par_fn: F2,
+    timed_fn: F,
     iterations: usize,
     threads_numbers: THREADS,
-) -> Vec<(usize, f64)> {
-    threads_numbers
-        .into_iter()
-        .map(|threads| {
-            let pool = ThreadPoolBuilder::new()
-                .num_threads(threads)
-                .build()
-                .expect("building pool failed");
-            (
-                threads,
-                pool.install(|| measure_speedup(init_fn, seq_fn, par_fn, iterations)),
-            )
-        })
-        .collect()
+) -> impl Iterator<Item = f64> {
+    threads_numbers.into_iter().map(move |threads| {
+        let pool = ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .expect("building pool failed");
+        pool.install(|| average_times(init_fn, timed_fn, iterations))
+    })
 }
 
 fn main() {
-    let iterations = 100;
-    let threads: Vec<usize> = (1..3).collect();
+    let iterations = 10;
+    let sizes = vec![10_000, 20_000, 50_000, 100_000];
+    let threads: Vec<usize> = (1..5).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
-        (Box::new(random_vec) as Box<Fn(usize) -> Vec<u32>>, "random"),
-        (Box::new(sorted_vec) as Box<Fn(usize) -> Vec<u32>>, "sorted"),
         (
-            Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32>>,
+            Box::new(random_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
+            "random",
+        ),
+        (
+            Box::new(sorted_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
+            "sorted",
+        ),
+        (
+            Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "reversed",
         ),
+        (
+            Box::new(random_vec_with_duplicates) as Box<Fn(usize) -> Vec<u32> + Sync>,
+            "random with duplicates",
+        ),
     ];
-    let algorithms: Vec<_> = once((
-        Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>)>,
-        "sequential".into(),
-    ))
-    .chain(
-        iproduct!(policies.clone(), policies).map(|(sort_policy, fuse_policy)| {
+    let algorithms: Vec<_> = iproduct!(policies.clone(), policies)
+        .map(|(sort_policy, fuse_policy)| {
             (
                 Box::new(move |mut v: Vec<u32>| {
                     adaptive_sort_with_policies(&mut v, sort_policy, fuse_policy)
-                }) as Box<Fn(Vec<u32>)>,
+                }) as Box<Fn(Vec<u32>) + Sync + Send>,
                 format!("{:?}/{:?}", sort_policy, fuse_policy),
             )
-        }),
-    )
-    .collect();
+        })
+        .chain(once((
+            Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
+            "sequential".to_string(),
+        )))
+        .collect();
+
+    for (generator_f, generator_name) in input_generators.iter().take(1) {
+        let mut file = File::create(format!("{}.dat", generator_name)).unwrap();
+        write!(&mut file, "#size threads ").expect("failed writing to file");
+        writeln!(
+            &mut file,
+            "{}",
+            algorithms.iter().map(|(_, label)| label).join(" ")
+        )
+        .expect("failed writing to file");
+        for size in sizes.iter() {
+            let algo_results: Vec<_> = algorithms
+                .iter()
+                .map(|(algo_f, _)| {
+                    times_by_processors(
+                        || generator_f(*size),
+                        |v| algo_f(v),
+                        iterations,
+                        threads.clone(),
+                    )
+                    .collect::<Vec<_>>()
+                })
+                .collect();
+            for (index, threads_number) in threads.iter().enumerate() {
+                writeln!(
+                    &mut file,
+                    "{}",
+                    once(size.to_string())
+                        .chain(once(threads_number.to_string()))
+                        .chain(algo_results.iter().map(|v| v[index].to_string()))
+                        .join(" ")
+                )
+                .expect("failed writing");
+            }
+        }
+    }
 }
