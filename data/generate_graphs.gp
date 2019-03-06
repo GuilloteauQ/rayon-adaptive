@@ -5,7 +5,7 @@ do for [desc in "random sorted reversed random_with_duplicates"] {
 
     filename=''.desc.'.dat'
 
-    do for [size in "10000 20000 50000 100000 200000"] {
+    do for [size in "10000 20000 50000 100000 200000 500000 1000000 5000000"] {
         set output ''.desc.'_png/'.desc.'_'.size.'.png'
         set title "Generator: ".desc." with array size ".size
         set xlabel "Thread pool size"
