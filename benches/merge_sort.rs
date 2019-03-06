@@ -5,12 +5,12 @@ extern crate rayon;
 extern crate rayon_adaptive;
 
 use rayon::prelude::*;
-use rayon_adaptive::adaptive_sort;
+use rayon_adaptive::{adaptive_sort, adaptive_sort_raw};
 
 use criterion::{Criterion, ParameterizedBenchmark};
 
 fn merge_sort_adaptive(c: &mut Criterion) {
-    let sizes = vec![20_000, 50_000, 100_000, 150_000];
+    let sizes = vec![50_000, 100_000, 150_000, 262_144];
     c.bench(
         "merge sort (random input)",
         ParameterizedBenchmark::new(
@@ -38,6 +38,18 @@ fn merge_sort_adaptive(c: &mut Criterion) {
                 },
                 |mut v| {
                     adaptive_sort(&mut v);
+                },
+            )
+        })
+        .with_function("adaptive raw", |b, input_size| {
+            b.iter_with_setup(
+                || {
+                    (0..*input_size)
+                        .map(|_| rand::random())
+                        .collect::<Vec<u32>>()
+                },
+                |mut v| {
+                    adaptive_sort_raw(&mut v);
                 },
             )
         })
@@ -74,6 +86,14 @@ fn merge_sort_adaptive(c: &mut Criterion) {
                 || (0..*input_size).rev().collect::<Vec<u32>>(),
                 |mut v| {
                     adaptive_sort(&mut v);
+                },
+            )
+        })
+        .with_function("adaptive raw", |b, input_size| {
+            b.iter_with_setup(
+                || (0..*input_size).rev().collect::<Vec<u32>>(),
+                |mut v| {
+                    adaptive_sort_raw(&mut v);
                 },
             )
         })
