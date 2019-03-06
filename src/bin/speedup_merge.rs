@@ -129,7 +129,7 @@ fn main() {
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("{}.dat", generator_name)).unwrap();
+        let mut file = File::create(format!("data/{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
             &mut file,
