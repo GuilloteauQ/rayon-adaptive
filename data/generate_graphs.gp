@@ -14,6 +14,8 @@ do for [desc in "random sorted reversed random_with_duplicates"] {
         filename using (($1==size)?$2:1/0):4 with linespoints title "J/JC" linecolor 2, \
         filename using (($1==size)?$2:1/0):5 with linespoints title "JC/J" linecolor 3, \
         filename using (($1==size)?$2:1/0):6 with linespoints title "JC/JC" linecolor 4, \
+        filename using (($1==size)?$2:1/0):8 with linespoints title "Raw J" linecolor 6, \
+        filename using (($1==size)?$2:1/0):9 with linespoints title "Raw JC" linecolor 7, \
         filename using (($1==size)?$2:1/0):7 with linespoints title "Seq" linecolor 5
 
         set output ''.desc.'_png/speedup_'.desc.'_'.size.'.png'
@@ -24,6 +26,8 @@ do for [desc in "random sorted reversed random_with_duplicates"] {
         filename using (($1==size)?$2:1/0):($4/$7) with linespoints title "J/JC" linecolor 2, \
         filename using (($1==size)?$2:1/0):($5/$7) with linespoints title "JC/J" linecolor 3, \
         filename using (($1==size)?$2:1/0):($6/$7) with linespoints title "JC/JC" linecolor 4, \
+        filename using (($1==size)?$2:1/0):($8/$7) with linespoints title "Raw J" linecolor 6, \
+        filename using (($1==size)?$2:1/0):($9/$7) with linespoints title "Raw JC" linecolor 7, \
         filename using (($1==size)?$2:1/0):($7/$7) with linespoints title "Seq" linecolor 5
 
     }
