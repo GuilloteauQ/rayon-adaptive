@@ -125,14 +125,16 @@ fn main() {
             Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
             "sequential".to_string(),
         )))
-        .chain(policies.iter().map(|fuse_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_raw_with_policies(&mut v, *fuse_policy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("Raw w/ {:?}", fuse_policy),
-            )
-        }))
+        .chain(
+            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+                (
+                    Box::new(move |mut v: Vec<u32>| {
+                        adaptive_sort_raw_with_policies(&mut v, sort_policy, fuse_policy)
+                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                    format!("Raw {:?}/{:?}", sort_policy, fuse_policy),
+                )
+            }),
+        )
         .collect();
 
     for (generator_f, generator_name) in input_generators.iter() {

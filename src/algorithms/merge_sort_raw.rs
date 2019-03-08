@@ -379,6 +379,7 @@ pub fn adaptive_sort_raw<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
 
 pub fn adaptive_sort_raw_with_policies<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
+    sort_policy: Policy,
     fuse_policy: Policy,
 ) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
@@ -396,15 +397,13 @@ pub fn adaptive_sort_raw_with_policies<T: Ord + Copy + Send + Sync>(
         i: 0,
     };
 
-    let mut result_slices = slices
-        .with_policy(Policy::DepJoin(slice_len / (num_threads * 2)))
-        .map_reduce(
-            |mut slices| {
-                slices.s[slices.i].sort();
-                slices
-            },
-            |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
-        );
+    let mut result_slices = slices.with_policy(sort_policy).map_reduce(
+        |mut slices| {
+            slices.s[slices.i].sort();
+            slices
+        },
+        |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
+    );
 
     if result_slices.i != 0 {
         let i = result_slices.i;
