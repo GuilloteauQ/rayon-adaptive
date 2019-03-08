@@ -1,11 +1,11 @@
 use itertools::{iproduct, Itertools};
 use rand::Rng;
-use rayon::ThreadPoolBuilder;
 use rayon_adaptive::Policy;
 use rayon_adaptive::{adaptive_sort_raw_with_policies, adaptive_sort_with_policies};
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{once, repeat_with};
+use thread_binder::ThreadPoolBuilder;
 use time::precise_time_ns;
 
 /// Return a random vector of values between a min and a max values
