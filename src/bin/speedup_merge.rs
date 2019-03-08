@@ -95,14 +95,17 @@ fn main() {
     let threads: Vec<usize> = (1..5).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
+        /*
         (
             Box::new(random_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "random",
         ),
+        */
         (
             Box::new(sorted_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "sorted",
         ),
+        /*
         (
             Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "reversed",
@@ -111,6 +114,7 @@ fn main() {
             Box::new(random_vec_with_duplicates) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "random_with_duplicates",
         ),
+        */
     ];
     let algorithms: Vec<_> = iproduct!(policies.clone(), policies.clone())
         .map(|(sort_policy, fuse_policy)| {
@@ -148,6 +152,7 @@ fn main() {
         )
         .expect("failed writing to file");
         for size in sizes.iter() {
+            println!("Size: {}", size);
             let algo_results: Vec<_> = algorithms
                 .iter()
                 .map(|(algo_f, _)| {

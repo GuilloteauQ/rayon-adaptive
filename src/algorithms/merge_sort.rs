@@ -211,6 +211,27 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             && left.s[left.i].last() <= right.s[right.i].first()
         {
             left.i
+        } else if left.s[left.i].last() <= right.s[right.i].first() {
+            let left_index = left.i;
+            let right_index = right.i;
+            // We look at the largest block
+            if left.s[left_index].len() < right.s[right_index].len() {
+                // We only move the left part
+                let output_index = right.i;
+                let (left_input, left_output) = left.mut_couple(left_index, output_index);
+                let (right_input, right_output) = right.mut_couple(right_index, output_index);
+                left_output.copy_from_slice(left_input);
+                let output_slice = fuse_slices(left_output, right_input);
+                output_index
+            } else {
+                // We only move the right block
+                let output_index = left.i;
+                let (left_input, left_output) = left.mut_couple(left_index, output_index);
+                let (right_input, right_output) = right.mut_couple(right_index, output_index);
+                right_output.copy_from_slice(right_input);
+                let output_slice = fuse_slices(left_input, right_output);
+                output_index
+            }
         } else {
             let destination_index = (0..3).find(|&x| x != left.i && x != right.i).unwrap();
             {
@@ -232,7 +253,8 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             }
             destination_index
         };
-        let fused_slices: Vec<_> = left.s
+        let fused_slices: Vec<_> = left
+            .s
             .into_iter()
             .zip(right.s.into_iter())
             .map(|(left_s, right_s)| fuse_slices(left_s, right_s))
