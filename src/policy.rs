@@ -26,6 +26,32 @@ pub enum Policy {
     Rayon,
 }
 
+impl Policy {
+    pub fn set_min_block_size(&self, new_size: usize) -> Self {
+        match self {
+            Policy::DefaultPolicy => Policy::DefaultPolicy,
+            Policy::Sequential => Policy::Sequential,
+            Policy::Join(_) => Policy::Join(new_size),
+            Policy::JoinContext(_) => Policy::JoinContext(new_size),
+            Policy::DepJoin(_) => Policy::DepJoin(new_size),
+            Policy::Adaptive(_, max) => Policy::Adaptive(new_size, *max),
+            Policy::Rayon => Policy::Rayon,
+        }
+    }
+
+    pub fn get_min_block_size(&self) -> Option<usize> {
+        match self {
+            Policy::DefaultPolicy => None,
+            Policy::Sequential => None,
+            Policy::Join(s) => Some(*s),
+            Policy::JoinContext(s) => Some(*s),
+            Policy::DepJoin(s) => Some(*s),
+            Policy::Adaptive(s, _) => Some(*s),
+            Policy::Rayon => None,
+        }
+    }
+}
+
 impl Default for Policy {
     fn default() -> Self {
         Policy::DefaultPolicy

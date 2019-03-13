@@ -405,14 +405,28 @@ pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
     }
 
     let slice_len = slice.len();
-    let num_threads = rayon::current_num_threads();
+
+    let block_size = sort_policy.get_min_block_size();
+
+    let new_block_size = match block_size {
+        Some(s) => {
+            let recursions =
+                (((slice_len as f64) / (s as f64)).log2().ceil() / 3.0 + 0.5).ceil() as usize * 3;
+            ((slice_len as f64) / (recursions as f64).exp2()).ceil() as usize
+        }
+        None => 0,
+    };
+
+    // println!("New block size: {}", new_block_size);
+
+    let updated_sort_policy = sort_policy.set_min_block_size(new_block_size);
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
     };
 
-    let mut result_slices = slices.with_policy(sort_policy).map_reduce(
+    let mut result_slices = slices.with_policy(updated_sort_policy).map_reduce(
         |mut slices| {
             slices.s[slices.i].sort();
             slices
@@ -421,6 +435,7 @@ pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
     );
 
     if result_slices.i != 0 {
+        println!("Final i is not 0");
         let i = result_slices.i;
         let (destination, source) = result_slices.mut_couple(0, i);
         destination.copy_from_slice(source);
