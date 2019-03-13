@@ -1,7 +1,10 @@
 use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon_adaptive::Policy;
-use rayon_adaptive::{adaptive_sort_raw_with_policies, adaptive_sort_with_policies};
+use rayon_adaptive::{
+    adaptive_sort_raw_with_policies, adaptive_sort_raw_with_policies_swap_blocks,
+    adaptive_sort_with_policies,
+};
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{once, repeat_with};
@@ -90,7 +93,7 @@ fn times_by_processors<
 fn main() {
     let iterations = 100;
     let sizes = vec![
-        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000,
+        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
     ];
     let threads: Vec<usize> = (1..5).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
@@ -136,6 +139,20 @@ fn main() {
                         adaptive_sort_raw_with_policies(&mut v, sort_policy, fuse_policy)
                     }) as Box<Fn(Vec<u32>) + Sync + Send>,
                     format!("Raw {:?}/{:?}", sort_policy, fuse_policy),
+                )
+            }),
+        )
+        .chain(
+            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+                (
+                    Box::new(move |mut v: Vec<u32>| {
+                        adaptive_sort_raw_with_policies_swap_blocks(
+                            &mut v,
+                            sort_policy,
+                            fuse_policy,
+                        )
+                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                    format!("Swap {:?}/{:?}", sort_policy, fuse_policy),
                 )
             }),
         )

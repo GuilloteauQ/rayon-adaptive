@@ -94,20 +94,23 @@ fn merge_split<'a, T: Ord>(
 
 #[derive(Debug)]
 struct FusionSlice<'a, T: 'a> {
-    left: EdibleSlice<'a, T>,
-    right: EdibleSlice<'a, T>,
-    output: EdibleSliceMut<'a, T>,
+    left: &'a [T],
+    left_index: usize,
+    right: &'a [T],
+    right_index: usize,
+    output: &'a mut [T],
+    output_index: usize,
 }
 
 impl<'a, T: 'a + Send + Sync + Ord + Copy> Divisible for FusionSlice<'a, T> {
     type Power = BasicPower;
     fn base_length(&self) -> usize {
-        self.output.base_length()
+        self.output.len() - self.output_index
     }
     fn divide(self) -> (Self, Self) {
-        let left = self.left.remaining_slice();
-        let right = self.right.remaining_slice();
-        let output = self.output.into_remaining_slice();
+        let left = &self.left[self.left_index..];
+        let right = &self.right[self.right_index..];
+        let output = &mut self.output[self.output_index..];
         let ((l1, l2, l3), (r1, r2, r3)) = if left.len() > right.len() {
             merge_split(left, right)
         } else {
@@ -122,14 +125,20 @@ impl<'a, T: 'a + Send + Sync + Ord + Copy> Divisible for FusionSlice<'a, T> {
         // return what is left to do
         (
             FusionSlice {
-                left: EdibleSlice::new(l1),
-                right: EdibleSlice::new(r1),
-                output: EdibleSliceMut::new(o1),
+                left: l1,
+                left_index: 0,
+                right: r1,
+                right_index: 0,
+                output: o1,
+                output_index: 0,
             },
             FusionSlice {
-                left: EdibleSlice::new(l3),
-                right: EdibleSlice::new(r3),
-                output: EdibleSliceMut::new(o3),
+                left: l3,
+                left_index: 0,
+                right: r3,
+                right_index: 0,
+                output: o3,
+                output_index: 0,
             },
         )
     }
@@ -137,53 +146,72 @@ impl<'a, T: 'a + Send + Sync + Ord + Copy> Divisible for FusionSlice<'a, T> {
 
 fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], policy: Policy) {
     let slices = FusionSlice {
-        left: EdibleSlice::new(left),
-        right: EdibleSlice::new(right),
-        output: EdibleSliceMut::new(output),
+        left: left,
+        left_index: 0,
+        right: right,
+        right_index: 0,
+        output: output,
+        output_index: 0,
     };
 
     slices
         .with_policy(policy)
         .partial_for_each(|mut slices, limit| {
             {
-                if slices.left.base_length() > limit && slices.right.base_length() > limit {
-                    let mut left_i = slices.left.iter();
-                    let mut right_i = slices.right.iter();
-                    for o in slices.output.iter_mut().take(limit) {
-                        let go_left = left_i.peek() <= right_i.peek();
-                        *o = if go_left {
-                            *left_i.next().unwrap()
-                        } else {
-                            *right_i.next().unwrap()
-                        };
+                if (slices.left.len() - slices.left_index) > limit
+                    && (slices.right.len() - slices.right_index) > limit
+                {
+                    for _ in 0..limit {
+                        let output_ref =
+                            unsafe { slices.output.get_unchecked_mut(slices.output_index) };
+                        slices.output_index += 1;
+                        *output_ref = unsafe {
+                            if slices.left.get_unchecked(slices.left_index)
+                                <= slices.right.get_unchecked(slices.right_index)
+                            {
+                                let temp = slices.left.get_unchecked(slices.left_index);
+                                slices.left_index += 1;
+                                *temp
+                            } else {
+                                let temp = slices.right.get_unchecked(slices.right_index);
+                                slices.right_index += 1;
+                                *temp
+                            }
+                        }
                     }
                 } else {
-                    let mut left_i = slices.left.iter();
-                    let mut right_i = slices.right.iter();
-                    for o in slices.output.iter_mut().take(limit) {
-                        let go_left = left_i.peek() <= right_i.peek();
-                        if go_left {
-                            if left_i.peek().is_none() {
-                                *o = *right_i.next().unwrap();
-                                slices
-                                    .output
-                                    .eat_remaining_slice()
-                                    .copy_from_slice(slices.right.eat_remaining_slice());
-
-                                break;
+                    for _ in 0..limit {
+                        if slices.right.len() <= slices.right_index {
+                            //Go left all the way.
+                            slices.output[slices.output_index..]
+                                .copy_from_slice(&slices.left[slices.left_index..]);
+                            slices.left_index = slices.left.len();
+                            slices.output_index = slices.output.len();
+                            break;
+                        }
+                        if slices.left.len() <= slices.left_index {
+                            slices.output[slices.output_index..]
+                                .copy_from_slice(&slices.right[slices.right_index..]);
+                            slices.right_index = slices.right.len();
+                            slices.output_index = slices.output.len();
+                            break;
+                        }
+                        let output_ref =
+                            unsafe { slices.output.get_unchecked_mut(slices.output_index) };
+                        slices.output_index += 1;
+                        *output_ref = unsafe {
+                            if slices.left.get_unchecked(slices.left_index)
+                                <= slices.right.get_unchecked(slices.right_index)
+                            {
+                                let temp = slices.left.get_unchecked(slices.left_index);
+                                slices.left_index += 1;
+                                *temp
+                            } else {
+                                let temp = slices.right.get_unchecked(slices.right_index);
+                                slices.right_index += 1;
+                                *temp
                             }
-                            *o = *left_i.next().unwrap();
-                        } else {
-                            if right_i.peek().is_none() {
-                                *o = *left_i.next().unwrap();
-                                slices
-                                    .output
-                                    .eat_remaining_slice()
-                                    .copy_from_slice(slices.left.eat_remaining_slice());
-                                break;
-                            }
-                            *o = *right_i.next().unwrap();
-                        };
+                        }
                     }
                 }
             }
@@ -210,7 +238,27 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let destination_index = if left.i == right.i
             && left.s[left.i].last() <= right.s[right.i].first()
         {
-            left.i
+            if left.i == right.i {
+                left.i
+            } else {
+                let left_input_index = left.i;
+                let right_input_index = right.i;
+                // We look at the largest block
+                if left.s[left_input_index].len() < right.s[right_input_index].len() {
+                    // We only move the left part
+                    let output_index = right_input_index;
+                    let (left_input, left_output) = left.mut_couple(left_input_index, output_index);
+                    left_output.copy_from_slice(left_input);
+                    output_index
+                } else {
+                    // We only move the right block
+                    let output_index = left_input_index;
+                    let (right_input, right_output) =
+                        right.mut_couple(right_input_index, output_index);
+                    right_output.copy_from_slice(right_input);
+                    output_index
+                }
+            }
         } else {
             let destination_index = (0..3).find(|&x| x != left.i && x != right.i).unwrap();
             {
@@ -220,10 +268,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
                 let output_slice = fuse_slices(left_output, right_output);
                 // if slices are nearly sorted we will resort to memcpy
-                if left_input.last() <= right_input.first() {
-                    output_slice[..left_input.base_length()].copy_from_slice(left_input);
-                    output_slice[left_input.base_length()..].copy_from_slice(right_input);
-                } else if right_input.last() < left_input.first() {
+                if right_input.last() < left_input.first() {
                     output_slice[..right_input.base_length()].copy_from_slice(right_input);
                     output_slice[right_input.base_length()..].copy_from_slice(left_input);
                 } else {
@@ -303,7 +348,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// # Examples
 ///
 /// ```
-/// use rayon_adaptive::adaptive_sort;
+/// use rayon_adaptive::adaptive_sort_raw;
 /// use rand::{thread_rng, Rng};
 ///
 /// let v: Vec<u32> = (0..100_000).collect();
@@ -311,18 +356,19 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// let mut rng = thread_rng();
 /// let mut random_v: Vec<u32> = (0..100_000).collect();
 /// rng.shuffle(&mut random_v);
-/// adaptive_sort(&mut random_v);
-/// adaptive_sort(&mut inverted_v);
+/// adaptive_sort_raw(&mut random_v);
+/// adaptive_sort_raw(&mut inverted_v);
 /// assert_eq!(v, inverted_v);
 /// assert_eq!(v, random_v);
 /// ```
-pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort_raw_swap_blocks<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
         tmp_slice1.set_len(slice.base_length());
         tmp_slice2.set_len(slice.base_length());
     }
+
     let slice_len = slice.len();
     let num_threads = rayon::current_num_threads();
 
@@ -332,7 +378,7 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     };
 
     let mut result_slices = slices
-        .with_policy(Policy::DepJoin(slice_len / (2 * num_threads)))
+        .with_policy(Policy::DepJoin(slice_len / (num_threads * 2)))
         .map_reduce(
             |mut slices| {
                 slices.s[slices.i].sort();
@@ -348,7 +394,7 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 
-pub fn adaptive_sort_with_policies<T: Ord + Copy + Send + Sync + std::fmt::Debug>(
+pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,
@@ -359,6 +405,9 @@ pub fn adaptive_sort_with_policies<T: Ord + Copy + Send + Sync + std::fmt::Debug
         tmp_slice1.set_len(slice.base_length());
         tmp_slice2.set_len(slice.base_length());
     }
+
+    let slice_len = slice.len();
+    let num_threads = rayon::current_num_threads();
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
