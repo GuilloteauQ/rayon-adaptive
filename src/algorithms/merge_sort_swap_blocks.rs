@@ -396,7 +396,7 @@ pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,
-) {
+) -> bool {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -435,9 +435,11 @@ pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
     );
 
     if result_slices.i != 0 {
-        println!("Final i is not 0");
         let i = result_slices.i;
         let (destination, source) = result_slices.mut_couple(0, i);
         destination.copy_from_slice(source);
+        true
+    } else {
+        false
     }
 }

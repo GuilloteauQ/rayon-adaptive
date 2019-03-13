@@ -41,50 +41,67 @@ fn random_vec(size: usize) -> Vec<u32> {
 // -------------------------------  Functions to make measures ------------------------------------
 //
 
-fn bench<INPUT, I, F>(init_fn: I, timed_fn: F) -> u64
+fn bench<INPUT, I, F>(init_fn: I, timed_fn: F) -> (u64, bool)
 where
     INPUT: Sized,
     I: Fn() -> INPUT,
-    F: Fn(INPUT),
+    F: Fn(INPUT) -> bool,
 {
     let input = init_fn();
     let begin_time: u64 = precise_time_ns();
-    timed_fn(input);
+    let state = timed_fn(input);
     let end_time: u64 = precise_time_ns();
-    end_time - begin_time
+    (end_time - begin_time, state)
+}
+
+fn tuple_to_vec<A: Clone, B: Clone>(v: &Vec<(A, B)>) -> (Vec<A>, Vec<B>) {
+    let mut va = Vec::new();
+    let mut vb = Vec::new();
+    for (a, b) in v.iter() {
+        va.push(a.clone());
+        vb.push(b.clone());
+    }
+    (va, vb)
 }
 
 /// Measure the speedup (time of the adaptive sort / time of the sequential sort)
 /// f is the function that will generate the arrays
-fn average_times<INPUT: Sized, I: Fn() -> INPUT, F: Fn(INPUT)>(
+fn average_times<INPUT: Sized, I: Fn() -> INPUT, F: Fn(INPUT) -> bool>(
     init_fn: I,
     timed_fn: F,
     iterations: usize,
-) -> f64 {
-    repeat_with(|| bench(&init_fn, &timed_fn))
-        .take(iterations)
-        .sum::<u64>() as f64
-        / iterations as f64
+) -> (f64, usize) {
+    let mut ve = Vec::new();
+    for _ in 0..iterations {
+        ve.push(bench(&init_fn, &timed_fn));
+    }
+    let v = tuple_to_vec(&ve);
+    let time: f64 = v.0.iter().sum::<u64>() as f64 / iterations as f64;
+    let states: usize = v.1.iter().map(|&b| if b { 1 } else { 0 }).sum();
+    (time, states)
 }
 
 fn times_by_processors<
     INPUT: Sized,
     I: Fn() -> INPUT + Send + Copy + Sync,
-    F: Fn(INPUT) + Send + Copy + Sync,
+    F: Fn(INPUT) -> bool + Send + Copy + Sync,
     THREADS: IntoIterator<Item = usize>,
 >(
     init_fn: I,
     timed_fn: F,
     iterations: usize,
     threads_numbers: THREADS,
-) -> impl Iterator<Item = f64> {
-    threads_numbers.into_iter().map(move |threads| {
-        let pool = ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .expect("building pool failed");
-        pool.install(|| average_times(init_fn, timed_fn, iterations))
-    })
+) -> Vec<(f64, usize)> {
+    threads_numbers
+        .into_iter()
+        .map(move |threads| {
+            let pool = ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("building pool failed");
+            pool.install(|| average_times(init_fn, timed_fn, iterations))
+        })
+        .collect()
 }
 
 fn main() {
@@ -115,7 +132,7 @@ fn main() {
             (
                 Box::new(move |mut v: Vec<u32>| {
                     adaptive_sort_raw_with_policies_swap_blocks(&mut v, sort_policy, fuse_policy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                }) as Box<Fn(Vec<u32>) -> bool + Sync + Send>,
                 format!("Swap {:?}/{:?}", sort_policy, fuse_policy),
             )
         })
@@ -123,40 +140,26 @@ fn main() {
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("data/{}.dat", generator_name)).unwrap();
-        write!(&mut file, "#size threads ").expect("failed writing to file");
-        writeln!(
-            &mut file,
-            "{}",
-            algorithms.iter().map(|(_, label)| label).join(" ")
-        )
-        .expect("failed writing to file");
         for size in sizes.iter() {
             println!("Size: {}", size);
             let algo_results: Vec<_> = algorithms
                 .iter()
                 .map(|(algo_f, name)| {
-                    println!("{}", name);
-                    times_by_processors(
+                    print!("{}: ", name);
+                    let res = times_by_processors(
                         || generator_f(*size),
                         |v| algo_f(v),
                         iterations,
                         threads.clone(),
-                    )
-                    .collect::<Vec<_>>()
+                    );
+                    print!(
+                        "{}/{} copies\n",
+                        res.iter().map(|(_, b)| b).sum::<usize>(),
+                        iterations
+                    );
+                    res
                 })
                 .collect();
-            for (index, threads_number) in threads.iter().enumerate() {
-                writeln!(
-                    &mut file,
-                    "{}",
-                    once(size.to_string())
-                        .chain(once(threads_number.to_string()))
-                        .chain(algo_results.iter().map(|v| v[index].to_string()))
-                        .join(" ")
-                )
-                .expect("failed writing");
-            }
         }
     }
 }
