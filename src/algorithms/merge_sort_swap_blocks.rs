@@ -235,9 +235,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let mut right = other;
         // let's try a nice optimization here for nearly sorted arrays.
         // if slices are already sorted and at same index then we do nothing !
-        let destination_index = if left.i == right.i
-            && left.s[left.i].last() <= right.s[right.i].first()
-        {
+        let destination_index = if left.s[left.i].last() <= right.s[right.i].first() {
             if left.i == right.i {
                 left.i
             } else {
