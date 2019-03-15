@@ -27,6 +27,12 @@ fn reversed_vec(size: usize) -> Vec<u32> {
     (0..size).rev().map(|x| x as u32).collect()
 }
 
+/// Return a vec half sorted, half reversed
+fn half_sorted(size: usize) -> Vec<u32> {
+    let mid = size / 2;
+    (0..mid).rev().chain(mid..size).map(|x| x as u32).collect()
+}
+
 /// Return a random vector with duplicates values
 /// (we are going to shrink the range for picking random values)
 fn random_vec_with_duplicates(size: usize) -> Vec<u32> {
@@ -125,6 +131,10 @@ fn main() {
         (
             Box::new(random_vec_with_duplicates) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "random_with_duplicates",
+        ),
+        (
+            Box::new(half_sorted) as Box<Fn(usize) -> Vec<u32> + Sync>,
+            "half sorted, half reversed",
         ),
     ];
     let algorithms: Vec<_> = iproduct!(policies.clone(), policies.clone())
