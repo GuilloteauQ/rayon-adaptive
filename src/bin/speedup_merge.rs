@@ -1,7 +1,10 @@
 use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon_adaptive::Policy;
-use rayon_adaptive::{adaptive_sort_raw_with_policies, adaptive_sort_with_policies};
+use rayon_adaptive::{
+    adaptive_sort_no_copy_with_policies, adaptive_sort_raw_with_policies,
+    adaptive_sort_raw_with_policies_swap_blocks, adaptive_sort_with_policies,
+};
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{once, repeat_with};
@@ -90,9 +93,9 @@ fn times_by_processors<
 fn main() {
     let iterations = 100;
     let sizes = vec![
-        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000,
+        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
     ];
-    let threads: Vec<usize> = (1..5).collect();
+    let threads: Vec<usize> = (1..33).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
         (
@@ -107,10 +110,12 @@ fn main() {
             Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "reversed",
         ),
+        /*
         (
             Box::new(random_vec_with_duplicates) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "random_with_duplicates",
         ),
+        */
     ];
     let algorithms: Vec<_> = iproduct!(policies.clone(), policies.clone())
         .map(|(sort_policy, fuse_policy)| {
@@ -135,6 +140,30 @@ fn main() {
                 )
             }),
         )
+        .chain(
+            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+                (
+                    Box::new(move |mut v: Vec<u32>| {
+                        adaptive_sort_raw_with_policies_swap_blocks(
+                            &mut v,
+                            sort_policy,
+                            fuse_policy,
+                        )
+                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                    format!("Swap {:?}/{:?}", sort_policy, fuse_policy),
+                )
+            }),
+        )
+        .chain(
+            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+                (
+                    Box::new(move |mut v: Vec<u32>| {
+                        adaptive_sort_no_copy_with_policies(&mut v, sort_policy, fuse_policy)
+                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                    format!("No copy {:?}/{:?}", sort_policy, fuse_policy),
+                )
+            }),
+        )
         .collect();
 
     for (generator_f, generator_name) in input_generators.iter() {
@@ -148,6 +177,7 @@ fn main() {
         )
         .expect("failed writing to file");
         for size in sizes.iter() {
+            println!("Size: {}", size);
             let algo_results: Vec<_> = algorithms
                 .iter()
                 .map(|(algo_f, _)| {
