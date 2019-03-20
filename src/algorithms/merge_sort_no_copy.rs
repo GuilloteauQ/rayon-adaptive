@@ -234,6 +234,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
     fn fuse_with_policy(self, other: Self, policy: Policy) -> Self {
         let mut left = self;
         let mut right = other;
+        let depth = left.depth;
         // let's try a nice optimization here for nearly sorted arrays.
         // if slices are already sorted and at same index then we do nothing !
         let destination_index = if left.i == right.i
@@ -241,7 +242,32 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         {
             left.i
         } else {
-            let destination_index = (0..3).find(|&x| x != left.i && x != right.i).unwrap();
+            let destination_index = if depth % 2 == 1 {
+                // If the depth is even
+                // We need to put the data in i=0
+                if left.i != 0 && right.i != 0 {
+                    // If no data is in i=0
+                    // we can move everything to i=0
+                    0
+                } else {
+                    // We have to put it in i=2
+                    // as it is our tmp buffer
+                    2
+                }
+            } else {
+                // If the depth is odd
+                // We need to put the data in i=1
+                if left.i != 1 && right.i != 1 {
+                    // If no data is in i=1
+                    // we can move everything to i=1
+                    1
+                } else {
+                    // We have to put it in i=2
+                    // as it is our tmp buffer
+                    2
+                }
+            };
+
             {
                 let left_index = left.i;
                 let right_index = right.i;
@@ -261,6 +287,13 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             }
             destination_index
         };
+        //println!(
+        //    "I am left, of size {} and depth {}\nI am rigth, of size {} and depth {}\nDestination Index: {}",
+        //    left.s[0].len(),
+        //    left.depth,
+        //    right.s[0].len(),
+        //    right.depth,
+        //destination_index);
         let fused_slices: Vec<_> = left
             .s
             .into_iter()
@@ -270,7 +303,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         SortingSlices {
             s: fused_slices,
             i: destination_index,
-            depth: self.depth - 1,
+            depth: depth - 1,
         }
     }
 
@@ -294,6 +327,13 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         }
     }
     fn split_at(self, i: usize) -> (Self, Self) {
+        let length = self.s[0].len();
+        // print!(
+        //     "Spliting a slice of size {} at index {}, previous depth: {}, ",
+        //     self.s[0].len(),
+        //     i,
+        //     self.depth
+        // );
         let v = self.s.into_iter().map(|s| s.split_at_mut(i)).fold(
             (Vec::new(), Vec::new()),
             |mut acc, (s1, s2)| {
@@ -302,7 +342,12 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 acc
             },
         );
-        let new_depth = self.depth + 1;
+        let new_depth = if length != i {
+            self.depth + 1
+        } else {
+            self.depth
+        };
+        // println!("children depth: {}", new_depth);
         (
             SortingSlices {
                 s: v.0,
@@ -402,24 +447,43 @@ pub fn adaptive_sort_no_copy_with_policies<T: Ord + Copy + Send + Sync>(
     }
 
     let slice_len = slice.len();
-    let num_threads = rayon::current_num_threads();
+
+    let block_size = sort_policy.get_min_block_size();
+
+    let new_block_size = match block_size {
+        Some(s) => {
+            let recursions =
+                (((slice_len as f64) / (s as f64)).log2().ceil() / 2.0 - 0.5).ceil() as usize * 2;
+            ((slice_len as f64) / (recursions as f64).exp2()).ceil() as usize
+        }
+        None => 0,
+    };
+
+    // println!("New block size: {}", new_block_size);
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
+        depth: 0,
     };
 
-    let mut result_slices = slices.with_policy(sort_policy).map_reduce(
-        |mut slices| {
-            slices.s[slices.i].sort();
-            slices
-        },
-        |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
-    );
+    let mut result_slices = slices
+        .with_policy(sort_policy.set_min_block_size(new_block_size))
+        .map_reduce(
+            |mut slices| {
+                slices.s[slices.i].sort();
+                slices
+            },
+            |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
+        );
 
+    assert_eq!(result_slices.depth, 0);
     if result_slices.i != 0 {
         let i = result_slices.i;
         let (destination, source) = result_slices.mut_couple(0, i);
         destination.copy_from_slice(source);
+        //       true
+        //   } else {
+        //       false
     }
 }
