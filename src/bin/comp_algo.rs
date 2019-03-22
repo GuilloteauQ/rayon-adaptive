@@ -84,6 +84,15 @@ fn times_by_processors<
     })
 }
 
+fn policy_code(policy: Policy) -> String {
+    let code = match policy {
+        Policy::Join(_) => "J",
+        Policy::JoinContext(_) => "JC",
+        _ => "Other",
+    };
+    String::from(code)
+}
+
 fn main() {
     let iterations = 10;
     let size = 5_000;
@@ -132,7 +141,9 @@ fn main() {
     ];
 
     for (generator_f, generator_name) in input_generators.iter() {
+        println!("> {}", generator_name);
         for sort_policy in policies.iter() {
+            println!(">> {:?}", sort_policy);
             let results: Vec<_> = algorithm_versions
                 .iter()
                 .map(|(algo_template, _)| {
@@ -146,8 +157,9 @@ fn main() {
                 })
                 .collect();
             let mut file = File::create(format!(
-                "data/comp_{}_{:?}.dat",
-                generator_name, sort_policy
+                "data/comp_{}_{}.dat",
+                generator_name,
+                policy_code(*sort_policy)
             ))
             .unwrap();
             write!(&mut file, "#size threads ").expect("failed writing to file");
