@@ -5,3 +5,4 @@ TODO
 target/
 .vim/
 *.sh
+**/*.png
