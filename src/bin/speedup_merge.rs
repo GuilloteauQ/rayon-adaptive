@@ -117,13 +117,13 @@ fn main() {
         ),
         */
     ];
-    let algorithms: Vec<_> = iproduct!(policies.clone(), policies.clone())
-        .map(|(sort_policy, fuse_policy)| {
+    let algorithms: Vec<_> =policies.iter()
+        .map(|sort_policy| {
             (
                 Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_with_policies(&mut v, sort_policy, fuse_policy)
+                    adaptive_sort_with_policies(&mut v, *sort_policy, Policy::Default)
                 }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("{:?}/{:?}", sort_policy, fuse_policy),
+                format!("{:?}", *sort_policy),
             )
         })
         .chain(once((
@@ -131,39 +131,43 @@ fn main() {
             "sequential".to_string(),
         )))
         .chain(
-            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+            policies.iter().map(|sort_policy)| {
                 (
                     Box::new(move |mut v: Vec<u32>| {
-                        adaptive_sort_raw_with_policies(&mut v, sort_policy, fuse_policy)
+                        adaptive_sort_raw_with_policies(&mut v, *sort_policy, Policy::Default)
                     }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("Raw {:?}/{:?}", sort_policy, fuse_policy),
+                    format!("Raw {:?}", *sort_policy),
                 )
             }),
         )
         .chain(
-            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+            policies.iter().map(|sort_policy| {
                 (
                     Box::new(move |mut v: Vec<u32>| {
                         adaptive_sort_raw_with_policies_swap_blocks(
                             &mut v,
-                            sort_policy,
-                            fuse_policy,
+                            *sort_policy,
+                            Policy::Default,
                         )
                     }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("Swap {:?}/{:?}", sort_policy, fuse_policy),
+                    format!("Swap {:?}", *sort_policy),
                 )
             }),
         )
         .chain(
-            iproduct!(policies.clone(), policies.clone()).map(|(sort_policy, fuse_policy)| {
+            policies.iter().map(|sort_policy| {
                 (
                     Box::new(move |mut v: Vec<u32>| {
-                        adaptive_sort_no_copy_with_policies(&mut v, sort_policy, fuse_policy)
+                        adaptive_sort_no_copy_with_policies(&mut v, *sort_policy)
                     }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("No copy {:?}/{:?}", sort_policy, fuse_policy),
+                    format!("No copy {:?}", *sort_policy),
                 )
             }),
         )
+        .chain(once((
+            Box::new(|mut v: Vec<u32>| adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::Default)) as Box<Fn(Vec<u32>) + Sync + Send>,
+            "Rayon".to_string(),
+        )))
         .collect();
 
     for (generator_f, generator_name) in input_generators.iter() {
