@@ -43,6 +43,7 @@ pub use crate::algorithms::{
     merge_sort::adaptive_sort, merge_sort::adaptive_sort_with_policies,
     merge_sort_no_copy::adaptive_sort_no_copy_with_policies, merge_sort_raw::adaptive_sort_raw,
     merge_sort_raw::adaptive_sort_raw_with_policies,
+    merge_sort_raw_cut::adaptive_sort_raw_cut_with_policies,
     merge_sort_swap_blocks::adaptive_sort_raw_swap_blocks,
     merge_sort_swap_blocks::adaptive_sort_raw_with_policies_swap_blocks,
 };

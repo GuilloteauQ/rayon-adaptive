@@ -235,28 +235,10 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let mut right = other;
         // let's try a nice optimization here for nearly sorted arrays.
         // if slices are already sorted and at same index then we do nothing !
-        let destination_index = if left.s[left.i].last() <= right.s[right.i].first() {
-            if left.i == right.i {
-                left.i
-            } else {
-                let left_input_index = left.i;
-                let right_input_index = right.i;
-                // We look at the largest block
-                if left.s[left_input_index].len() < right.s[right_input_index].len() {
-                    // We only move the left part
-                    let output_index = right_input_index;
-                    let (left_input, left_output) = left.mut_couple(left_input_index, output_index);
-                    left_output.copy_from_slice(left_input);
-                    output_index
-                } else {
-                    // We only move the right block
-                    let output_index = left_input_index;
-                    let (right_input, right_output) =
-                        right.mut_couple(right_input_index, output_index);
-                    right_output.copy_from_slice(right_input);
-                    output_index
-                }
-            }
+        let destination_index = if left.i == right.i
+            && left.s[left.i].last() <= right.s[right.i].first()
+        {
+            left.i
         } else {
             let destination_index = (0..3).find(|&x| x != left.i && x != right.i).unwrap();
             {
@@ -266,7 +248,10 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
                 let output_slice = fuse_slices(left_output, right_output);
                 // if slices are nearly sorted we will resort to memcpy
-                if right_input.last() < left_input.first() {
+                if left_input.last() <= right_input.first() {
+                    output_slice[..left_input.base_length()].copy_from_slice(left_input);
+                    output_slice[left_input.base_length()..].copy_from_slice(right_input);
+                } else if right_input.last() < left_input.first() {
                     output_slice[..right_input.base_length()].copy_from_slice(right_input);
                     output_slice[right_input.base_length()..].copy_from_slice(left_input);
                 } else {
@@ -329,7 +314,8 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
     }
     fn divide(self) -> (Self, Self) {
         let mid = self.s[0].base_length() / 2;
-        self.split_at(mid)
+        let new_mid = (mid as f64).log2().floor().exp2() as usize;
+        self.split_at(new_mid)
     }
 }
 
@@ -359,7 +345,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// assert_eq!(v, inverted_v);
 /// assert_eq!(v, random_v);
 /// ```
-pub fn adaptive_sort_raw_swap_blocks<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -392,7 +378,7 @@ pub fn adaptive_sort_raw_swap_blocks<T: Ord + Copy + Send + Sync>(slice: &mut [T
     }
 }
 
-pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_raw_cut_with_policies<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,
@@ -403,6 +389,9 @@ pub fn adaptive_sort_raw_with_policies_swap_blocks<T: Ord + Copy + Send + Sync>(
         tmp_slice1.set_len(slice.base_length());
         tmp_slice2.set_len(slice.base_length());
     }
+
+    let slice_len = slice.len();
+    let num_threads = rayon::current_num_threads();
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],

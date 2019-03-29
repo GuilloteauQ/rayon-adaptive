@@ -2,8 +2,9 @@ use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon_adaptive::Policy;
 use rayon_adaptive::{
-    adaptive_sort_no_copy_with_policies, adaptive_sort_raw_with_policies,
-    adaptive_sort_raw_with_policies_swap_blocks, adaptive_sort_with_policies,
+    adaptive_sort_no_copy_with_policies, adaptive_sort_raw_cut_with_policies,
+    adaptive_sort_raw_with_policies, adaptive_sort_raw_with_policies_swap_blocks,
+    adaptive_sort_with_policies,
 };
 use std::fs::File;
 use std::io::prelude::*;
@@ -91,11 +92,12 @@ fn times_by_processors<
 }
 
 fn main() {
-    let iterations = 100;
+    let iterations = 10;
     let sizes = vec![
-        10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
+        // 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
+        10_000_000,
     ];
-    let threads: Vec<usize> = (1..33).collect();
+    let threads: Vec<usize> = (1..4).collect();
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
         (
@@ -159,6 +161,14 @@ fn main() {
                 format!("No copy {:?}", *sort_policy),
             )
         }))
+        .chain(policies.iter().map(|sort_policy| {
+            (
+                Box::new(move |mut v: Vec<u32>| {
+                    adaptive_sort_raw_cut_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
+                }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                format!("Cut {:?}", *sort_policy),
+            )
+        }))
         .chain(once((
             Box::new(|mut v: Vec<u32>| {
                 adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::DefaultPolicy)
@@ -169,7 +179,7 @@ fn main() {
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("data/{}.dat", generator_name)).unwrap();
+        let mut file = File::create(format!("data/29032019_{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
             &mut file,

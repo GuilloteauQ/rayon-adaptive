@@ -116,14 +116,17 @@ fn main() {
     let threads: Vec<usize> = vec![4];
     let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let input_generators = vec![
+        /*
         (
             Box::new(random_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "random",
         ),
+        */
         (
             Box::new(sorted_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "sorted",
         ),
+        /*
         (
             Box::new(reversed_vec) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "reversed",
@@ -136,6 +139,7 @@ fn main() {
             Box::new(half_sorted) as Box<Fn(usize) -> Vec<u32> + Sync>,
             "half sorted, half reversed",
         ),
+        */
     ];
     let algorithms: Vec<_> = iproduct!(policies.clone(), policies.clone())
         .map(|(sort_policy, fuse_policy)| {
