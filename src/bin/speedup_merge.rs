@@ -117,11 +117,12 @@ fn main() {
         ),
         */
     ];
-    let algorithms: Vec<_> =policies.iter()
+    let algorithms: Vec<_> = policies
+        .iter()
         .map(|sort_policy| {
             (
                 Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_with_policies(&mut v, *sort_policy, Policy::Default)
+                    adaptive_sort_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
                 }) as Box<Fn(Vec<u32>) + Sync + Send>,
                 format!("{:?}", *sort_policy),
             )
@@ -130,42 +131,38 @@ fn main() {
             Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
             "sequential".to_string(),
         )))
-        .chain(
-            policies.iter().map(|sort_policy)| {
-                (
-                    Box::new(move |mut v: Vec<u32>| {
-                        adaptive_sort_raw_with_policies(&mut v, *sort_policy, Policy::Default)
-                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("Raw {:?}", *sort_policy),
-                )
-            }),
-        )
-        .chain(
-            policies.iter().map(|sort_policy| {
-                (
-                    Box::new(move |mut v: Vec<u32>| {
-                        adaptive_sort_raw_with_policies_swap_blocks(
-                            &mut v,
-                            *sort_policy,
-                            Policy::Default,
-                        )
-                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("Swap {:?}", *sort_policy),
-                )
-            }),
-        )
-        .chain(
-            policies.iter().map(|sort_policy| {
-                (
-                    Box::new(move |mut v: Vec<u32>| {
-                        adaptive_sort_no_copy_with_policies(&mut v, *sort_policy)
-                    }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                    format!("No copy {:?}", *sort_policy),
-                )
-            }),
-        )
+        .chain(policies.iter().map(|sort_policy| {
+            (
+                Box::new(move |mut v: Vec<u32>| {
+                    adaptive_sort_raw_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
+                }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                format!("Raw {:?}", *sort_policy),
+            )
+        }))
+        .chain(policies.iter().map(|sort_policy| {
+            (
+                Box::new(move |mut v: Vec<u32>| {
+                    adaptive_sort_raw_with_policies_swap_blocks(
+                        &mut v,
+                        *sort_policy,
+                        Policy::DefaultPolicy,
+                    )
+                }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                format!("Swap {:?}", *sort_policy),
+            )
+        }))
+        .chain(policies.iter().map(|sort_policy| {
+            (
+                Box::new(move |mut v: Vec<u32>| {
+                    adaptive_sort_no_copy_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
+                }) as Box<Fn(Vec<u32>) + Sync + Send>,
+                format!("No copy {:?}", *sort_policy),
+            )
+        }))
         .chain(once((
-            Box::new(|mut v: Vec<u32>| adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::Default)) as Box<Fn(Vec<u32>) + Sync + Send>,
+            Box::new(|mut v: Vec<u32>| {
+                adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::DefaultPolicy)
+            }) as Box<Fn(Vec<u32>) + Sync + Send>,
             "Rayon".to_string(),
         )))
         .collect();
