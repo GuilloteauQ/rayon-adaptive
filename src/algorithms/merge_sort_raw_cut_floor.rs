@@ -314,7 +314,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
     }
     fn divide(self) -> (Self, Self) {
         let mid = self.s[0].base_length() / 2;
-        let new_mid = (mid as f64).log2().ceil().exp2() as usize;
+        let new_mid = (mid as f64).log2().floor().exp2() as usize;
         println!(
             "I am splitting a slice of size {} at position {}",
             self.s[0].len(),
@@ -350,7 +350,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// assert_eq!(v, inverted_v);
 /// assert_eq!(v, random_v);
 /// ```
-pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort_raw_cut_floor<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -383,7 +383,7 @@ pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 
-pub fn adaptive_sort_raw_cut_with_policies<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_raw_cut_floor_with_policies<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,

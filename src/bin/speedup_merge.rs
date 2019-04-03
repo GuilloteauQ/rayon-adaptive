@@ -2,7 +2,8 @@ use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon_adaptive::Policy;
 use rayon_adaptive::{
-    adaptive_sort_no_copy_with_policies, adaptive_sort_raw_cut_with_policies,
+    adaptive_sort_no_copy_with_policies, adaptive_sort_raw_cut_ceil_with_policies,
+    adaptive_sort_raw_cut_floor_with_policies, adaptive_sort_raw_cut_with_policies,
     adaptive_sort_raw_with_policies, adaptive_sort_raw_with_policies_swap_blocks,
     adaptive_sort_with_policies,
 };
@@ -119,67 +120,45 @@ fn main() {
         ),
         */
     ];
-    let algorithms: Vec<_> = policies
-        .iter()
-        .map(|sort_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("{:?}", *sort_policy),
-            )
-        })
-        .chain(once((
-            Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
-            "sequential".to_string(),
-        )))
-        .chain(policies.iter().map(|sort_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_raw_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("Raw {:?}", *sort_policy),
-            )
-        }))
-        .chain(policies.iter().map(|sort_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_raw_with_policies_swap_blocks(
-                        &mut v,
-                        *sort_policy,
-                        Policy::DefaultPolicy,
-                    )
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("Swap {:?}", *sort_policy),
-            )
-        }))
-        .chain(policies.iter().map(|sort_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_no_copy_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("No copy {:?}", *sort_policy),
-            )
-        }))
-        .chain(policies.iter().map(|sort_policy| {
-            (
-                Box::new(move |mut v: Vec<u32>| {
-                    adaptive_sort_raw_cut_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
-                }) as Box<Fn(Vec<u32>) + Sync + Send>,
-                format!("Cut {:?}", *sort_policy),
-            )
-        }))
-        .chain(once((
-            Box::new(|mut v: Vec<u32>| {
-                adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::DefaultPolicy)
+    let algorithms: Vec<_> = once((
+        Box::new(|mut v: Vec<u32>| v.sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
+        "sequential".to_string(),
+    ))
+    .chain(policies.iter().map(|sort_policy| {
+        (
+            Box::new(move |mut v: Vec<u32>| {
+                adaptive_sort_raw_cut_floor_with_policies(
+                    &mut v,
+                    *sort_policy,
+                    Policy::DefaultPolicy,
+                )
             }) as Box<Fn(Vec<u32>) + Sync + Send>,
-            "Rayon".to_string(),
-        )))
-        .collect();
+            format!("Cut floor {:?}", *sort_policy),
+        )
+    }))
+    .chain(policies.iter().map(|sort_policy| {
+        (
+            Box::new(move |mut v: Vec<u32>| {
+                adaptive_sort_raw_cut_ceil_with_policies(
+                    &mut v,
+                    *sort_policy,
+                    Policy::DefaultPolicy,
+                )
+            }) as Box<Fn(Vec<u32>) + Sync + Send>,
+            format!("Cut ceil {:?}", *sort_policy),
+        )
+    }))
+    .chain(once((
+        Box::new(|mut v: Vec<u32>| {
+            adaptive_sort_with_policies(&mut v, Policy::Rayon, Policy::DefaultPolicy)
+        }) as Box<Fn(Vec<u32>) + Sync + Send>,
+        "Rayon".to_string(),
+    )))
+    .collect();
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("data/29032019_{}.dat", generator_name)).unwrap();
+        let mut file = File::create(format!("data/03042019_{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
             &mut file,

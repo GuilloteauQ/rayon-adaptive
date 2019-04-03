@@ -350,7 +350,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// assert_eq!(v, inverted_v);
 /// assert_eq!(v, random_v);
 /// ```
-pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort_raw_cut_ceil<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -383,7 +383,7 @@ pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 
-pub fn adaptive_sort_raw_cut_with_policies<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_raw_cut_ceil_with_policies<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,
