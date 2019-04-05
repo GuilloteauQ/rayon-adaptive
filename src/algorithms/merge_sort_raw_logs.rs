@@ -3,6 +3,7 @@ use crate::prelude::*;
 use crate::traits::{BasicPower, BlockedPower};
 use crate::{fuse_slices, EdibleSlice, EdibleSliceMut, Policy};
 use itertools::Itertools;
+use rayon_logs::subgraph;
 use std;
 use std::iter::repeat;
 
@@ -226,7 +227,6 @@ fn fuse<T: Ord + Send + Sync + Copy>(left: &[T], right: &[T], output: &mut [T], 
 struct SortingSlices<'a, T: 'a> {
     s: Vec<&'a mut [T]>,
     i: usize,
-    block_size: usize,
 }
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
@@ -270,7 +270,6 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         SortingSlices {
             s: fused_slices,
             i: destination_index,
-            block_size: left.block_size,
         }
     }
 
@@ -294,26 +293,20 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         }
     }
     fn split_at(self, i: usize) -> (Self, Self) {
-        let v = self.s.into_iter().map(|s| s.split_at_mut(i)).fold(
-            (Vec::new(), Vec::new()),
-            |mut acc, (s1, s2)| {
-                acc.0.push(s1);
-                acc.1.push(s2);
-                acc
-            },
-        );
-        (
-            SortingSlices {
-                s: v.0,
-                i: self.i,
-                block_size: self.block_size,
-            },
-            SortingSlices {
-                s: v.1,
-                i: self.i,
-                block_size: self.block_size,
-            },
-        )
+        subgraph("Split", self.s[0].len(), || {
+            let v = self.s.into_iter().map(|s| s.split_at_mut(i)).fold(
+                (Vec::new(), Vec::new()),
+                |mut acc, (s1, s2)| {
+                    acc.0.push(s1);
+                    acc.1.push(s2);
+                    acc
+                },
+            );
+            (
+                SortingSlices { s: v.0, i: self.i },
+                SortingSlices { s: v.1, i: self.i },
+            )
+        })
     }
 }
 
@@ -322,18 +315,9 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible for SortingSlices<'a, T> {
     fn base_length(&self) -> usize {
         self.s[0].base_length()
     }
-
     fn divide(self) -> (Self, Self) {
-        let block_size = self.block_size;
-        let length = self.s[0].base_length();
-        let mid = length / (2 * block_size);
-        let new_mid = (mid as f64).log2().ceil().exp2() as usize * block_size;
-        // println!(
-        //     "I am splitting a slice of size {} at position {}",
-        //     length, new_mid
-        // );
-        assert!(new_mid != 0);
-        self.split_at(new_mid)
+        let mid = self.s[0].base_length() / 2;
+        self.split_at(mid)
     }
 }
 
@@ -363,7 +347,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> DivisibleIntoBlocks for SortingSlices
 /// assert_eq!(v, inverted_v);
 /// assert_eq!(v, random_v);
 /// ```
-pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort_raw_logs<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
     unsafe {
@@ -377,7 +361,6 @@ pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
-        block_size: 1000,
     };
 
     let mut result_slices = slices
@@ -397,11 +380,10 @@ pub fn adaptive_sort_raw_cut<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 
-pub fn adaptive_sort_raw_cut_with_policies<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_raw_logs_with_policies<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     sort_policy: Policy,
     fuse_policy: Policy,
-    block_size: usize,
 ) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length());
@@ -410,18 +392,26 @@ pub fn adaptive_sort_raw_cut_with_policies<T: Ord + Copy + Send + Sync>(
         tmp_slice2.set_len(slice.base_length());
     }
 
+    let slice_len = slice.len();
+    let num_threads = rayon::current_num_threads();
+
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
-        block_size: block_size,
     };
 
     let mut result_slices = slices.with_policy(sort_policy).map_reduce(
         |mut slices| {
-            slices.s[slices.i].sort();
-            slices
+            subgraph("Seq Sort", slices.s[0].len(), || {
+                slices.s[slices.i].sort();
+                slices
+            })
         },
-        |s1, s2| s1.fuse_with_policy(s2, fuse_policy),
+        |s1, s2| {
+            subgraph("Fuse", s1.s[0].len(), || {
+                s1.fuse_with_policy(s2, fuse_policy)
+            })
+        },
     );
 
     if result_slices.i != 0 {

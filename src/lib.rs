@@ -46,6 +46,7 @@ pub use crate::algorithms::{
     merge_sort_raw_cut::adaptive_sort_raw_cut_with_policies,
     merge_sort_raw_cut_ceil::adaptive_sort_raw_cut_ceil_with_policies,
     merge_sort_raw_cut_floor::adaptive_sort_raw_cut_floor_with_policies,
+    merge_sort_raw_logs::adaptive_sort_raw_logs_with_policies,
     merge_sort_swap_blocks::adaptive_sort_raw_swap_blocks,
     merge_sort_swap_blocks::adaptive_sort_raw_with_policies_swap_blocks,
 };
