@@ -12,7 +12,8 @@ debug = true
 
 [features]
 # enable this to log using rayon_logs
-logs = ["rayon_logs"]
+logs = ["rayon_logs/bind"]
+perf = ["rayon_logs/perf"]
 
 [dependencies]
 thread_binder="*"

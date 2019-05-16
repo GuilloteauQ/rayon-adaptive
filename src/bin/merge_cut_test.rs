@@ -17,7 +17,7 @@ fn random_vec(size: usize) -> Vec<u32> {
 
 fn main() {
     // let size = 1_000_000;
-    let size = 8194; //10_000;
+    let size = 100_000;
     let threads = 4;
     // let policies = vec![Policy::Join(1000), Policy::JoinContext(1000)];
     let policies = vec![Policy::Join(1000)];
@@ -29,8 +29,17 @@ fn main() {
             .num_threads(threads)
             .build()
             .expect("Failed to build the pool");
-        pool.install(|| {
-            adaptive_sort_raw_cut_with_policies(&mut v, *sort_policy, Policy::DefaultPolicy)
-        });
+        for block_size in 10..size {
+            print!("Block_size: {} -> ", block_size);
+            pool.install(|| {
+                adaptive_sort_raw_cut_with_policies(
+                    &mut v,
+                    *sort_policy,
+                    Policy::DefaultPolicy,
+                    block_size,
+                )
+            });
+            print!("OK\n");
+        }
     }
 }

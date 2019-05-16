@@ -9,6 +9,7 @@ fn main() {
         .build()
         .expect("failed");
     pool.compare()
+        .runs_number(1)
         .attach_algorithm_with_setup(
             "raw_pol_JC_adapt",
             || (0..50_000_000).collect::<Vec<u32>>(),

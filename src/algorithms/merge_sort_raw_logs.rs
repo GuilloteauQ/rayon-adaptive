@@ -3,7 +3,14 @@ use crate::prelude::*;
 use crate::traits::{BasicPower, BlockedPower};
 use crate::{fuse_slices, EdibleSlice, EdibleSliceMut, Policy};
 use itertools::Itertools;
+use rayon_logs::prelude::*;
+
+#[cfg(not(feature = "perf"))]
 use rayon_logs::subgraph;
+
+#[cfg(feature = "perf")]
+use rayon_logs::subgraph_perf;
+
 use std;
 use std::iter::repeat;
 
@@ -293,20 +300,18 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         }
     }
     fn split_at(self, i: usize) -> (Self, Self) {
-        subgraph("Split", self.s[0].len(), || {
-            let v = self.s.into_iter().map(|s| s.split_at_mut(i)).fold(
-                (Vec::new(), Vec::new()),
-                |mut acc, (s1, s2)| {
-                    acc.0.push(s1);
-                    acc.1.push(s2);
-                    acc
-                },
-            );
-            (
-                SortingSlices { s: v.0, i: self.i },
-                SortingSlices { s: v.1, i: self.i },
-            )
-        })
+        let v = self.s.into_iter().map(|s| s.split_at_mut(i)).fold(
+            (Vec::new(), Vec::new()),
+            |mut acc, (s1, s2)| {
+                acc.0.push(s1);
+                acc.1.push(s2);
+                acc
+            },
+        );
+        (
+            SortingSlices { s: v.0, i: self.i },
+            SortingSlices { s: v.1, i: self.i },
+        )
     }
 }
 
@@ -399,7 +404,30 @@ pub fn adaptive_sort_raw_logs_with_policies<T: Ord + Copy + Send + Sync>(
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
         i: 0,
     };
+    #[cfg(feature = "perf")]
+    let mut result_slices = slices.with_policy(sort_policy).map_reduce(
+        |mut slices| {
+            subgraph_perf(
+                "Seq Sort",
+                HardwareEventType::CacheMisses,
+                "Cache Misses",
+                || {
+                    slices.s[slices.i].sort();
+                    slices
+                },
+            )
+        },
+        |s1, s2| {
+            subgraph_perf(
+                "Fuse",
+                HardwareEventType::CacheMisses,
+                "Cache Misses",
+                || s1.fuse_with_policy(s2, fuse_policy),
+            )
+        },
+    );
 
+    #[cfg(not(feature = "perf"))]
     let mut result_slices = slices.with_policy(sort_policy).map_reduce(
         |mut slices| {
             subgraph("Seq Sort", slices.s[0].len(), || {

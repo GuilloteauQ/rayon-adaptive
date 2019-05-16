@@ -6,3 +6,5 @@ target/
 .vim/
 *.sh
 **/*.png
+*.dat
+*.html

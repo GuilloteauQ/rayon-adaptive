@@ -19,7 +19,7 @@ use std;
 use std::cmp::min;
 mod collect;
 pub use self::collect::{FromAdaptiveBlockedIterator, FromAdaptiveIndexedIterator};
-pub(crate) mod hash;
+// pub(crate) mod hash;
 pub(crate) mod str;
 use crate::utils::powers;
 use crate::utils::AbortingDivisible;
