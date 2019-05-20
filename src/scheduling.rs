@@ -136,11 +136,11 @@ where
         let (i1, j) = input.divide();
         let (i2, i3) = j.divide();
         let (r1, (r2, r3)) = rayon::join(
-            || schedule_join(i1, folder, reduce_function, block_size),
+            || schedule_join3(i1, folder, reduce_function, block_size),
             || {
                 rayon::join(
-                    || schedule_join(i2, folder, reduce_function, block_size),
-                    || schedule_join(i3, folder, reduce_function, block_size),
+                    || schedule_join3(i2, folder, reduce_function, block_size),
+                    || schedule_join3(i3, folder, reduce_function, block_size),
                 )
             },
         );
