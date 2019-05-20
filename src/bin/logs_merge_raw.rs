@@ -22,7 +22,6 @@ fn main() {
         .build()
         .expect("failed");
     pool.compare()
-        .runs_number(1)
         .attach_algorithm_with_setup(
             "JC Reversed",
             || (0..50_000_000).rev().collect::<Vec<u32>>(),

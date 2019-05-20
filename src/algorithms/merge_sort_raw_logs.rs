@@ -5,11 +5,10 @@ use crate::{fuse_slices, EdibleSlice, EdibleSliceMut, Policy};
 use itertools::Itertools;
 use rayon_logs::prelude::*;
 
-#[cfg(not(feature = "perf"))]
 use rayon_logs::subgraph;
 
 #[cfg(feature = "perf")]
-use rayon_logs::subgraph_perf;
+use rayon_logs::subgraph_perf_cache;
 
 use std;
 use std::iter::repeat;
@@ -407,10 +406,12 @@ pub fn adaptive_sort_raw_logs_with_policies<T: Ord + Copy + Send + Sync>(
     #[cfg(feature = "perf")]
     let mut result_slices = slices.with_policy(sort_policy).map_reduce(
         |mut slices| {
-            subgraph_perf(
+            subgraph_perf_cache(
                 "Seq Sort",
-                HardwareEventType::CacheMisses,
-                "Cache Misses",
+		CacheId::NODE,
+		CacheOpId::Read,
+		CacheOpResultId::Miss,
+                "Node read misses",
                 || {
                     slices.s[slices.i].sort();
                     slices
@@ -418,10 +419,12 @@ pub fn adaptive_sort_raw_logs_with_policies<T: Ord + Copy + Send + Sync>(
             )
         },
         |s1, s2| {
-            subgraph_perf(
+            subgraph_perf_cache(
                 "Fuse",
-                HardwareEventType::CacheMisses,
-                "Cache Misses",
+		CacheId::NODE,
+		CacheOpId::Read,
+		CacheOpResultId::Miss,
+                "Node read misses",
                 || s1.fuse_with_policy(s2, fuse_policy),
             )
         },
