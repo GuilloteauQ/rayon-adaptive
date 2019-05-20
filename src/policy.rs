@@ -15,6 +15,7 @@ pub enum Policy {
     Sequential,
     /// Recursively cut in two with join until given block size.
     Join(usize),
+    Join3(usize),
     /// Recursively cut in two with join_context until given block size.
     JoinContext(usize),
     /// Recursively cut in two with depjoin until given block size.
@@ -32,6 +33,7 @@ impl Policy {
             Policy::DefaultPolicy => Policy::DefaultPolicy,
             Policy::Sequential => Policy::Sequential,
             Policy::Join(_) => Policy::Join(new_size),
+            Policy::Join3(_) => Policy::Join(new_size),
             Policy::JoinContext(_) => Policy::JoinContext(new_size),
             Policy::DepJoin(_) => Policy::DepJoin(new_size),
             Policy::Adaptive(_, max) => Policy::Adaptive(new_size, *max),
@@ -44,6 +46,7 @@ impl Policy {
             Policy::DefaultPolicy => None,
             Policy::Sequential => None,
             Policy::Join(s) => Some(*s),
+            Policy::Join3(s) => Some(*s),
             Policy::JoinContext(s) => Some(*s),
             Policy::DepJoin(s) => Some(*s),
             Policy::Adaptive(s, _) => Some(*s),

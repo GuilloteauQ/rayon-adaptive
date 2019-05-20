@@ -57,6 +57,7 @@ where
                 Policy::Sequential => input.base_length(),
                 Policy::DefaultPolicy => compute_size(input.base_length(), default_min_block_size),
                 Policy::Join(block_size)
+                | Policy::Join3(block_size)
                 | Policy::JoinContext(block_size)
                 | Policy::DepJoin(block_size)
                 | Policy::Adaptive(block_size, _) => block_size,
@@ -65,6 +66,7 @@ where
             match policy {
                 Policy::Sequential => schedule_sequential(input, folder),
                 Policy::Join(_) => schedule_join(input, folder, reduce_function, block_size),
+                Policy::Join3(_) => schedule_join3(input, folder, reduce_function, block_size),
                 Policy::JoinContext(_) => {
                     schedule_join_context(input, folder, reduce_function, block_size)
                 }
@@ -115,6 +117,35 @@ fn schedule_sequential<F: Folder>(input: F::Input, folder: &F) -> F::Output {
     let len = input.base_length();
     let (io, i) = folder.fold(folder.identity(), input, len);
     folder.to_output(io, i)
+}
+
+fn schedule_join3<F, RF>(
+    input: F::Input,
+    folder: &F,
+    reduce_function: &RF,
+    block_size: usize,
+) -> F::Output
+where
+    F: Folder,
+    RF: Fn(F::Output, F::Output) -> F::Output + Sync,
+{
+    let len = input.base_length();
+    if len <= block_size {
+        schedule_sequential(input, folder)
+    } else {
+        let (i1, j) = input.divide();
+        let (i2, i3) = j.divide();
+        let (r1, (r2, r3)) = rayon::join(
+            || schedule_join(i1, folder, reduce_function, block_size),
+            || {
+                rayon::join(
+                    || schedule_join(i2, folder, reduce_function, block_size),
+                    || schedule_join(i3, folder, reduce_function, block_size),
+                )
+            },
+        );
+        reduce_function(r1, reduce_function(r2, r3))
+    }
 }
 
 fn schedule_join<F, RF>(
