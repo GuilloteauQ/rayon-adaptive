@@ -100,11 +100,11 @@ where
         let ((left_result, mid_result), right_result) = rayon::join(
             || {
                 rayon::join(
-                    || schedule_join(left, identity, op, sequential_fallback),
-                    || schedule_join(mid, identity, op, sequential_fallback),
+                    || schedule_join3(left, identity, op, sequential_fallback),
+                    || schedule_join3(mid, identity, op, sequential_fallback),
                 )
             },
-            || schedule_join(right, identity, op, sequential_fallback),
+            || schedule_join3(right, identity, op, sequential_fallback),
         );
         op(op(left_result, mid_result), right_result)
     }
