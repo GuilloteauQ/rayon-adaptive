@@ -77,6 +77,38 @@ where
     }
 }
 
+fn schedule_join3<P, I, ID, OP>(
+    iterator: I,
+    identity: &ID,
+    op: &OP,
+    sequential_fallback: usize,
+) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    OP: Fn(I::Item, I::Item) -> I::Item + Sync,
+    ID: Fn() -> I::Item + Sync,
+{
+    let full_length = iterator
+        .base_length()
+        .expect("running on infinite iterator");
+    if full_length <= sequential_fallback {
+        schedule_sequential(iterator, identity, op)
+    } else {
+        let (left, rest) = iterator.divide();
+        let (mid, right) = rest.divide();
+        let ((left_result, mid_result), right_result) = rayon::join(
+            || {
+                rayon::join(
+                    || schedule_join(left, identity, op, sequential_fallback),
+                    || schedule_join(mid, identity, op, sequential_fallback),
+                )
+            },
+            || schedule_join(right, identity, op, sequential_fallback),
+        );
+        op(op(left_result, mid_result), right_result)
+    }
+}
 pub(crate) fn schedule_rayon<P, I, ID, OP>(
     iterator: I,
     identity: &ID,
