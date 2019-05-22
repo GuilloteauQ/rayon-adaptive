@@ -1,7 +1,8 @@
+#![allow(dead_code)]
 //! All schedulers are written here.
 use crate::prelude::*;
 use crate::smallchannel::small_channel;
-use crate::utils::power_sizes;
+use crate::utils::{merge_3, power_sizes};
 use crate::Policy;
 
 /// reduce parallel iterator
@@ -77,7 +78,8 @@ where
     }
 }
 
-fn schedule_join3<P, I, ID, OP>(
+/// Split the iterator in 3 parts and then reduce 3 to 1
+pub fn schedule_join3<P, I, ID, OP>(
     iterator: I,
     identity: &ID,
     op: &OP,
@@ -86,17 +88,26 @@ fn schedule_join3<P, I, ID, OP>(
 where
     P: Power,
     I: ParallelIterator<P>,
-    OP: Fn(I::Item, I::Item) -> I::Item + Sync,
+    OP: Fn(I::Item, I::Item, I::Item) -> I::Item + Sync,
     ID: Fn() -> I::Item + Sync,
 {
     let full_length = iterator
         .base_length()
         .expect("running on infinite iterator");
     if full_length <= sequential_fallback {
-        schedule_sequential(iterator, identity, op)
+        let (seq_iter, _remaining) = iterator.iter(full_length);
+        seq_iter.fold(identity(), |a, _| a) // TODO
     } else {
-        let (left, rest) = iterator.divide();
-        let (mid, right) = rest.divide();
+        // let (left, rest) = iterator.divide();
+        // let (mid, right) = rest.divide();
+        let block = full_length / 3;
+        let block_sizes = vec![block, block, full_length - 2 * block];
+        let mut work_blocks = iterator.blocks(block_sizes.into_iter());
+        let (left, mid, right) = (
+            work_blocks.next().unwrap(),
+            work_blocks.next().unwrap(),
+            work_blocks.next().unwrap(),
+        );
         let ((left_result, mid_result), right_result) = rayon::join(
             || {
                 rayon::join(
@@ -106,9 +117,10 @@ where
             },
             || schedule_join3(right, identity, op, sequential_fallback),
         );
-        op(op(left_result, mid_result), right_result)
+        op(left_result, mid_result, right_result)
     }
 }
+
 pub(crate) fn schedule_rayon<P, I, ID, OP>(
     iterator: I,
     identity: &ID,
