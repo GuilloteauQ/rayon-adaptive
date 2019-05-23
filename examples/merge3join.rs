@@ -107,7 +107,7 @@ fn merge_split<'a, T: Ord>(
 
 /// Takes 3 slices and returns the merged data in vector
 /// This function is iterative
-pub(crate) fn merge_3<'a, T: 'a + Ord + Copy>(s1: &[T], s2: &[T], s3: &[T], v: &mut [T]) {
+pub(crate) fn merge_3<'a, T: 'a + Ord + Copy>(s1: &[T], s2: &[T], s3: &[T], mut v: &mut [T]) {
     let len1 = s1.len();
     let len2 = s2.len();
     let len3 = s3.len();
@@ -146,24 +146,6 @@ struct SortingSlices<'a, T: 'a> {
 }
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
-    fn new() -> Self {
-        let size = 0;
-        let mut tmp_slice1: Vec<T> = Vec::new();
-        let mut tmp_slice2: Vec<T> = Vec::new();
-        let mut tmp_slice3: Vec<T> = Vec::new();
-        unsafe {
-            tmp_slice1.set_len(size);
-            tmp_slice2.set_len(size);
-            tmp_slice3.set_len(size);
-        }
-
-        let slices = SortingSlices {
-            s: vec![tmp_slice1, tmp_slice2, tmp_slice3],
-            i: 0,
-        };
-        slices
-    }
-
     /// Call parallel merge on the right slices.
     fn fuse(self, mid: Self, right: Self) -> Self {
         let mut left = self;
@@ -234,16 +216,13 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
     }
 }
 
-pub fn adaptive_sort_raw_with_policies<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length().unwrap());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length().unwrap());
     unsafe {
         tmp_slice1.set_len(slice.base_length().unwrap());
         tmp_slice2.set_len(slice.base_length().unwrap());
     }
-
-    let slice_len = slice.len();
-    let num_threads = rayon::current_num_threads();
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice(), tmp_slice2.as_mut_slice()],
@@ -255,30 +234,18 @@ pub fn adaptive_sort_raw_with_policies<T: Ord + Copy + Send + Sync>(slice: &mut 
         slices
     });
 
-    let v_final = schedule_join3(
-        k,
-        &SortingSlices::new, // MARAME WALLAH CEST QUOI IDENTITY
-        &|l: SortingSlices<T>, m, r| l.fuse(m, r),
-        10,
-    );
+    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 10);
 
-    // let mut result_slices = slices.with_policy(sort_policy).map_reduce(
-    //     |mut slices| {
-    //         slices.s[slices.i].sort();
-    //         slices
-    //     },
-    //     |s1, s2, s3| s1.fuse_with_policy(s2, s3),
-    // );
-
-    // if result_slices.i != 0 {
-    //     let i = result_slices.i;
-    //     let (destination, source) = result_slices.mut_couple(0, i);
-    //     destination.copy_from_slice(source);
-    // }
+    if result_slices.i != 0 {
+        let i = result_slices.i;
+        let (destination, source) = result_slices.mut_couple(0, i);
+        destination.copy_from_slice(source);
+    }
 }
 fn main() {
-    let v: Vec<u32> = (0..100_000).collect();
-    let mut inverted_v: Vec<u32> = (0..100_000).rev().collect();
-    adaptive_sort_raw_with_policies(&mut inverted_v);
+    let size = 100_001;
+    let v: Vec<u32> = (0..size).collect();
+    let mut inverted_v: Vec<u32> = (0..size).rev().collect();
+    adaptive_sort(&mut inverted_v);
     assert_eq!(v, inverted_v);
 }

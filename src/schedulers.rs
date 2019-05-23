@@ -79,27 +79,42 @@ where
 }
 
 /// Split the iterator in 3 parts and then reduce 3 to 1
-pub fn schedule_join3<P, I, ID, OP>(
-    iterator: I,
-    identity: &ID,
-    op: &OP,
-    sequential_fallback: usize,
-) -> I::Item
+pub fn schedule_join3<P, I, OP>(iterator: I, op: &OP, sequential_fallback: usize) -> I::Item
 where
     P: Power,
     I: ParallelIterator<P>,
     OP: Fn(I::Item, I::Item, I::Item) -> I::Item + Sync,
-    ID: Fn() -> I::Item + Sync,
 {
     let full_length = iterator
         .base_length()
         .expect("running on infinite iterator");
+    // println!("full_length: {}", full_length);
     if full_length <= sequential_fallback {
-        let (seq_iter, _remaining) = iterator.iter(full_length);
-        seq_iter.fold(identity(), |a, _| a) // TODO
+        let (mut seq_iter, _remaining) = iterator.iter(full_length);
+        let mut acc = seq_iter.next().unwrap();
+        // loop {
+        while let Some(m) = seq_iter.next() {
+            // let m = match seq_iter.next() {
+            //     Some(m) => m,
+            //     None => break,
+            // };
+            let r = match seq_iter.next() {
+                Some(r) => r,
+                None => break,
+            };
+            acc = op(acc, m, r);
+        }
+        acc
+    // seq_iter
+    //     .collect::<Vec<I::Item>>()
+    //     .chunks(2)
+    //     .into_iter()
+    //     .fold(acc, |l, v| {
+    //         let m = &v[0];
+    //         let r = &v[1];
+    //         op(l, *m, r)
+    //     })
     } else {
-        // let (left, rest) = iterator.divide();
-        // let (mid, right) = rest.divide();
         let block = full_length / 3;
         let block_sizes = vec![block, block, full_length - 2 * block];
         let mut work_blocks = iterator.blocks(block_sizes.into_iter());
@@ -111,11 +126,11 @@ where
         let ((left_result, mid_result), right_result) = rayon::join(
             || {
                 rayon::join(
-                    || schedule_join3(left, identity, op, sequential_fallback),
-                    || schedule_join3(mid, identity, op, sequential_fallback),
+                    || schedule_join3(left, op, sequential_fallback),
+                    || schedule_join3(mid, op, sequential_fallback),
                 )
             },
-            || schedule_join3(right, identity, op, sequential_fallback),
+            || schedule_join3(right, op, sequential_fallback),
         );
         op(left_result, mid_result, right_result)
     }
