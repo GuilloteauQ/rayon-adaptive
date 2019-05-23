@@ -233,13 +233,13 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
         i: 0,
     };
 
-    #[cfg(feature = "logs")]
+    #[cfg(not(feature = "logs"))]
     let k = slices.work(|mut slices, size| {
         slices.s[slices.i][0..size].sort();
         slices
     });
 
-    #[cfg(not(feature = "logs"))]
+    #[cfg(feature = "logs")]
     let k = slices.work(|mut slices, size| {
         subgraph("Sort", slices.s[0].len(), || {
             slices.s[slices.i][0..size].sort();
@@ -247,7 +247,11 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
         })
     });
 
-    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 1000);
+    let mut result_slices = schedule_join3(
+        k,
+        &|l: SortingSlices<T>, m, r| subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r)),
+        5000,
+    );
 
     if result_slices.i != 0 {
         let i = result_slices.i;
