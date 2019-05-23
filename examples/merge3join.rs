@@ -1,6 +1,10 @@
 //! adaptive parallel merge sort.
 use rayon_adaptive::prelude::*;
-use rayon_adaptive::Policy;
+// use rayon_adaptive::Policy;
+#[cfg(feature = "logs")]
+use rayon_logs::prelude::*;
+#[cfg(feature = "logs")]
+use rayon_logs::subgraph;
 use std::iter::repeat;
 
 macro_rules! fuse_multiple_slices {
@@ -229,12 +233,21 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
         i: 0,
     };
 
+    #[cfg(feature = "logs")]
     let k = slices.work(|mut slices, size| {
         slices.s[slices.i][0..size].sort();
         slices
     });
 
-    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 10);
+    #[cfg(not(feature = "logs"))]
+    let k = slices.work(|mut slices, size| {
+        subgraph("Sort", slices.s[0].len(), || {
+            slices.s[slices.i][0..size].sort();
+            slices
+        })
+    });
+
+    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 1000);
 
     if result_slices.i != 0 {
         let i = result_slices.i;
@@ -243,9 +256,23 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 fn main() {
-    let size = 100_001;
+    let size = 100_000;
     let v: Vec<u32> = (0..size).collect();
     let mut inverted_v: Vec<u32> = (0..size).rev().collect();
-    adaptive_sort(&mut inverted_v);
+    #[cfg(feature = "logs")]
+    {
+        let pool = rayon_logs::ThreadPoolBuilder::new()
+            .num_threads(3)
+            .build()
+            .expect("failed");
+        let (_, log) = pool.logging_install(|| adaptive_sort(&mut inverted_v));
+
+        log.save_svg("merge_sort_join3.svg")
+            .expect("saving svg file failed");
+    }
+    #[cfg(not(feature = "logs"))]
+    {
+        adaptive_sort(&mut inverted_v);
+    }
     assert_eq!(v, inverted_v);
 }
