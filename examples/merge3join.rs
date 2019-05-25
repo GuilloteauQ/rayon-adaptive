@@ -1,4 +1,5 @@
 //! adaptive parallel merge sort.
+use rayon::prelude::*;
 use rayon_adaptive::prelude::*;
 // use rayon_adaptive::Policy;
 #[cfg(feature = "logs")]
@@ -141,6 +142,38 @@ pub(crate) fn merge_3<'a, T: 'a + Ord + Copy>(s1: &[T], s2: &[T], s3: &[T], mut 
     }
 }
 
+fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
+    s1: &[T],
+    s2: &[T],
+    s3: &[T],
+    mut v: &mut [T],
+) {
+    let len1 = s1.len();
+    let len2 = s2.len();
+    let len3 = s3.len();
+
+    if len1 == 0 {
+        merge_2(s2, 0, s3, 0, &mut v, 0);
+    } else if len2 == 0 {
+        merge_2(s1, 0, s3, 0, &mut v, 0);
+    } else if len3 == 0 {
+        merge_2(s1, 0, s2, 0, &mut v, 0);
+    } else {
+        let i1 = len1 / 2;
+        let x = s1[i1];
+        let i2 = s2.binary_search(&x).unwrap_or(len2);
+        let i3 = s3.binary_search(&x).unwrap_or(len3);
+
+        let mut v_tmp = vec![x; i1 + i2 + i3];
+        rayon::join(
+            || merge_3_par(&s1[..i1], &s2[..i2], &s3[..i3], &mut v_tmp),
+            || merge_3_par(&s1[i1..], &s2[i2..], &s3[i3..], &mut v[(i1 + i2 + i3)..]),
+        );
+
+        v[..(i1 + i2 + i3)].copy_from_slice(&v_tmp);
+    }
+}
+
 // sort related code
 
 /// We'll need slices of several vectors at once.
@@ -169,7 +202,8 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
 
                 let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
-                merge_3(left_input, mid_input, right_input, output_slice);
+                // merge_3(left_input, mid_input, right_input, output_slice);
+                merge_3_par(left_input, mid_input, right_input, output_slice);
             }
             destination_index
         };
@@ -247,6 +281,10 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
         })
     });
 
+    #[cfg(not(feature = "logs"))]
+    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 5000);
+
+    #[cfg(feature = "logs")]
     let mut result_slices = schedule_join3(
         k,
         &|l: SortingSlices<T>, m, r| subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r)),
