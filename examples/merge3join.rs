@@ -165,10 +165,19 @@ fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
         let i3 = s3.binary_search(&x).unwrap_or(len3);
 
         let mut v_tmp = vec![x; i1 + i2 + i3];
+        #[cfg(not(feature = "logs"))]
         rayon::join(
             || merge_3_par(&s1[..i1], &s2[..i2], &s3[..i3], &mut v_tmp),
             || merge_3_par(&s1[i1..], &s2[i2..], &s3[i3..], &mut v[(i1 + i2 + i3)..]),
         );
+
+        #[cfg(feature = "logs")]
+        subgraph("Fuse rec", i1 + i2 + i3, || {
+            rayon::join(
+                || merge_3_par(&s1[..i1], &s2[..i2], &s3[..i3], &mut v_tmp),
+                || merge_3_par(&s1[i1..], &s2[i2..], &s3[i3..], &mut v[(i1 + i2 + i3)..]),
+            )
+        });
 
         v[..(i1 + i2 + i3)].copy_from_slice(&v_tmp);
     }
@@ -288,7 +297,7 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut result_slices = schedule_join3(
         k,
         &|l: SortingSlices<T>, m, r| subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r)),
-        5000,
+        5_000,
     );
 
     if result_slices.i != 0 {
@@ -309,7 +318,7 @@ fn main() {
             .expect("failed");
         let (_, log) = pool.logging_install(|| adaptive_sort(&mut inverted_v));
 
-        log.save_svg("merge_sort_join3.svg")
+        log.save_svg("merge_sort_join3_par_fuse.svg")
             .expect("saving svg file failed");
     }
     #[cfg(not(feature = "logs"))]
