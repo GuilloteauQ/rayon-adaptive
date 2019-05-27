@@ -1,11 +1,13 @@
 //! adaptive parallel merge sort.
-use rayon::prelude::*;
 use rayon_adaptive::prelude::*;
 // use rayon_adaptive::Policy;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 #[cfg(feature = "logs")]
-use rayon_logs::prelude::*;
+extern crate rayon_logs as rayon;
+
+use rayon::prelude::*;
+
 #[cfg(feature = "logs")]
 use rayon_logs::subgraph;
 use std::iter::repeat;
@@ -125,23 +127,6 @@ fn split_around<T: Eq>(slice: &[T], start: usize) -> (&[T], &[T], &[T]) {
     (low_slice, equal_slice, high_slice)
 }
 
-/// split large array at midpoint and small array where needed for merge.
-fn merge_split<'a, T: Ord>(
-    large: &'a [T],
-    small: &'a [T],
-) -> ((&'a [T], &'a [T], &'a [T]), (&'a [T], &'a [T], &'a [T])) {
-    let middle = large.len() / 2;
-    let split_large = split_around(large, middle);
-    let split_small = match small.binary_search(&large[middle]) {
-        Ok(i) => split_around(small, i),
-        Err(i) => {
-            let (small1, small3) = small.split_at(i);
-            (small1, &small[0..0], small3)
-        }
-    };
-    (split_large, split_small)
-}
-
 /// Performs a recursive merge
 ///  * Cuts the larger array in 3
 ///  * Binary search the 1/3 and 2/3 values in the other arrays
@@ -176,16 +161,9 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
             (small1, &small[0..0], small3)
         }
     };
-
-    // println!(
-    //     "Lenght: {}, first_third: {}, split_large_first_third.0: {:?}, split_large_first_third.1: {:?}, split_large_first_third.2: {:?}",
-    //     large.len(),
-    //     first_third,
-    //     split_large_first_third.0.len(),
-    //     split_large_first_third.1.len(),
-    //     split_large_first_third.2.len()
-    // );
     // ----- SECOND THIRD -----
+    //
+    // TODO: What if this part is empty ?
     let second_third = split_large_first_third.2.len() / 2;
 
     let split_large_second_third = split_around(split_large_first_third.2, second_third);
@@ -209,7 +187,6 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
             (small1, &split_small_first_third.2[0..0], small3)
         }
     };
-
     // [ less than pivot 1 | pivot(s) 1 | more p1, less p2 | pivot(s) 2 | more p2 ]
     // ^                   ^            ^                  ^            ^
     // |                   |            |                  |            |
@@ -287,10 +264,11 @@ fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
     let len3 = s3.len();
 
     if len1 <= min_size || len2 <= min_size || len3 <= min_size {
-        merge_3(s1, s2, s3, &mut v);
+        // merge_3(s1, s2, s3, &mut v);
+        subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
     } else {
         let (
-            (i0, (ft1, ft2, ft3)),
+            (_, (ft1, ft2, ft3)),
             (i1, (pv1_1, pv1_2, pv1_3)),
             (i2, (st1, st2, st3)),
             (i3, (pv2_1, pv2_2, pv2_3)),
@@ -332,18 +310,18 @@ fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
         let mut v_first_third = vec![x; i1];
 
         let mut v_second_third = vec![x; i3 - i2];
-        let size1 = v_first_third.len();
-        let size2 = v_second_third.len();
 
-        rayon::join(
-            || {
-                rayon::join(
-                    || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
-                    || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
-                )
-            },
-            || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
-        );
+        subgraph("Fuse par", len1 + len2 + len3, || {
+            rayon::join(
+                || {
+                    rayon::join(
+                        || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
+                        || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
+                    )
+                },
+                || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
+            );
+        });
 
         v[..i1].copy_from_slice(&v_first_third);
         v[i1..i1 + pv1_1.len()].copy_from_slice(&pv1_1);
@@ -368,10 +346,11 @@ struct SortingSlices<'a, T: 'a> {
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
     /// Call parallel merge on the right slices.
-    fn fuse(self, mid: Self, right: Self) -> Self {
+    fn fuse(self, mid: Self, right: Self, block_size_fuse: usize) -> Self {
         let mut left = self;
         let mut mid = mid;
         let mut right = right;
+
         let destination_index = {
             let destination_index = (0..3)
                 .find(|&x| x != left.i && x != mid.i && x != right.i)
@@ -386,8 +365,25 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
 
                 let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
-                // merge_3(left_input, mid_input, right_input, output_slice);
-                merge_3_par(left_input, mid_input, right_input, output_slice, 100);
+                #[cfg(not(feature = "logs"))]
+                merge_3_par(
+                    left_input,
+                    mid_input,
+                    right_input,
+                    output_slice,
+                    block_size_fuse,
+                );
+
+                #[cfg(feature = "logs")]
+                //subgraph("Fuse rec master", full_size, || {
+                merge_3_par(
+                    left_input,
+                    mid_input,
+                    right_input,
+                    output_slice,
+                    block_size_fuse,
+                );
+                //});
             }
             destination_index
         };
@@ -438,7 +434,11 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
     }
 }
 
-pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
+pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(
+    slice: &mut [T],
+    block_size: usize,
+    block_size_fuse: usize,
+) {
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length().unwrap());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length().unwrap());
     unsafe {
@@ -466,13 +466,19 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     });
 
     #[cfg(not(feature = "logs"))]
-    let mut result_slices = schedule_join3(k, &|l: SortingSlices<T>, m, r| l.fuse(m, r), 5000);
+    let mut result_slices = schedule_join3(
+        k,
+        &|l: SortingSlices<T>, m, r| l.fuse(m, r, block_size_fuse),
+        block_size,
+    );
 
     #[cfg(feature = "logs")]
     let mut result_slices = schedule_join3(
         k,
-        &|l: SortingSlices<T>, m, r| subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r)),
-        5000,
+        &|l: SortingSlices<T>, m, r| {
+            subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, block_size_fuse))
+        },
+        block_size,
     );
 
     if result_slices.i != 0 {
@@ -482,7 +488,9 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 fn main() {
-    let size = 1_000_000;
+    let size = 50_000_000;
+    let block_size = 1_850_000;
+    let block_size_fuse = 850_000;
     let v: Vec<u32> = (0..size).collect();
     let mut shuffled: Vec<u32> = (0..size).collect();
 
@@ -496,14 +504,15 @@ fn main() {
             .num_threads(3)
             .build()
             .expect("failed");
-        let (_, log) = pool.logging_install(|| adaptive_sort(&mut shuffled));
+        let (_, log) =
+            pool.logging_install(|| adaptive_sort(&mut shuffled, block_size, block_size_fuse));
 
         log.save_svg("merge_sort_join3_par_fuse.svg")
             .expect("saving svg file failed");
     }
     #[cfg(not(feature = "logs"))]
     {
-        adaptive_sort(&mut shuffled);
+        adaptive_sort(&mut shuffled, block_size, block_size_fuse);
     }
     assert_eq!(v, shuffled);
 }
