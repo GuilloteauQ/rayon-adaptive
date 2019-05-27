@@ -157,12 +157,8 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
     (usize, (&'a [T], &'a [T], &'a [T])),
     (usize, (&'a [T], &'a [T], &'a [T])),
 ) {
-    let x = large[0];
     let len_large = large.len();
     let first_third = len_large / 3;
-    let second_third = 2 * first_third;
-    let threshold_first_third = large[first_third];
-    let threshold_second_third = large[second_third];
 
     // ----- FIRST THIRD -----
     let split_large_first_third = split_around(large, first_third);
@@ -181,33 +177,38 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
         }
     };
 
+    // println!(
+    //     "Lenght: {}, first_third: {}, split_large_first_third.0: {:?}, split_large_first_third.1: {:?}, split_large_first_third.2: {:?}",
+    //     large.len(),
+    //     first_third,
+    //     split_large_first_third.0.len(),
+    //     split_large_first_third.1.len(),
+    //     split_large_first_third.2.len()
+    // );
     // ----- SECOND THIRD -----
-    let split_large_second_third = split_around(large, second_third);
-    let split_mid_second_third = match mid.binary_search(&large[second_third]) {
-        Ok(i) => split_around(mid, i),
+    let second_third = split_large_first_third.2.len() / 2;
+
+    let split_large_second_third = split_around(split_large_first_third.2, second_third);
+    let split_mid_second_third = match split_mid_first_third
+        .2
+        .binary_search(&split_large_first_third.2[second_third])
+    {
+        Ok(i) => split_around(split_mid_first_third.2, i),
         Err(i) => {
-            let (mid1, mid3) = mid.split_at(i);
-            (mid1, &mid[0..0], mid3)
+            let (mid1, mid3) = split_mid_first_third.2.split_at(i);
+            (mid1, &split_mid_first_third.2[0..0], mid3)
         }
     };
-    let split_small_second_third = match small.binary_search(&large[second_third]) {
-        Ok(i) => split_around(small, i),
+    let split_small_second_third = match split_small_first_third
+        .2
+        .binary_search(&split_large_first_third.2[second_third])
+    {
+        Ok(i) => split_around(split_small_first_third.2, i),
         Err(i) => {
-            let (small1, small3) = small.split_at(i);
-            (small1, &small[0..0], small3)
+            let (small1, small3) = split_small_first_third.2.split_at(i);
+            (small1, &split_small_first_third.2[0..0], small3)
         }
     };
-
-    let split_large_middle = &large[split_large_first_third.0.len()
-        + split_large_first_third.1.len()
-        ..large.len() - split_large_second_third.1.len() - split_large_second_third.2.len()];
-
-    let split_mid_middle = &mid[split_mid_first_third.0.len() + split_mid_first_third.1.len()
-        ..mid.len() - split_mid_second_third.1.len() - split_mid_second_third.2.len()];
-
-    let split_small_middle = &small[split_small_first_third.0.len()
-        + split_small_first_third.1.len()
-        ..small.len() - split_small_second_third.1.len() - split_small_second_third.2.len()];
 
     // [ less than pivot 1 | pivot(s) 1 | more p1, less p2 | pivot(s) 2 | more p2 ]
     // ^                   ^            ^                  ^            ^
@@ -221,7 +222,10 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
         + split_large_first_third.1.len()
         + split_mid_first_third.1.len()
         + split_small_first_third.1.len();
-    let i3 = i2 + split_large_middle.len() + split_mid_middle.len() + split_small_middle.len();
+    let i3 = i2
+        + split_large_second_third.0.len()
+        + split_mid_second_third.0.len()
+        + split_small_second_third.0.len();
     let i4 = i3
         + split_large_second_third.1.len()
         + split_mid_second_third.1.len()
@@ -246,7 +250,11 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
         ),
         (
             i2,
-            (&split_large_middle, &split_mid_middle, &split_small_middle),
+            (
+                &split_large_second_third.0,
+                &split_mid_second_third.0,
+                &split_small_second_third.0,
+            ),
         ),
         (
             i3,
@@ -272,17 +280,14 @@ fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
     s2: &[T],
     s3: &[T],
     mut v: &mut [T],
+    min_size: usize,
 ) {
     let len1 = s1.len();
     let len2 = s2.len();
     let len3 = s3.len();
 
-    if len1 == 0 {
-        merge_2(s2, 0, s3, 0, &mut v, 0);
-    } else if len2 == 0 {
-        merge_2(s1, 0, s3, 0, &mut v, 0);
-    } else if len3 == 0 {
-        merge_2(s1, 0, s2, 0, &mut v, 0);
+    if len1 <= min_size || len2 <= min_size || len3 <= min_size {
+        merge_3(s1, s2, s3, &mut v);
     } else {
         let (
             (i0, (ft1, ft2, ft3)),
@@ -327,25 +332,29 @@ fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
         let mut v_first_third = vec![x; i1];
 
         let mut v_second_third = vec![x; i3 - i2];
+        let size1 = v_first_third.len();
+        let size2 = v_second_third.len();
 
         rayon::join(
             || {
                 rayon::join(
-                    || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third),
-                    || merge_3_par(&st1, &st2, &st3, &mut v_second_third),
+                    || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
+                    || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
                 )
             },
-            || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..]),
+            || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
         );
 
         v[..i1].copy_from_slice(&v_first_third);
         v[i1..i1 + pv1_1.len()].copy_from_slice(&pv1_1);
-        v[i1..i1 + pv1_1.len() + pv1_2.len()].copy_from_slice(&pv1_2);
-        v[i1..i1 + pv1_1.len() + pv1_2.len() + pv1_3.len()].copy_from_slice(&pv1_3);
+        v[i1 + pv1_1.len()..i1 + pv1_1.len() + pv1_2.len()].copy_from_slice(&pv1_2);
+        v[i1 + pv1_1.len() + pv1_2.len()..i1 + pv1_1.len() + pv1_2.len() + pv1_3.len()]
+            .copy_from_slice(&pv1_3);
         v[i2..i3].copy_from_slice(&v_second_third);
         v[i3..i3 + pv2_1.len()].copy_from_slice(&pv2_1);
-        v[i3..i3 + pv2_1.len() + pv2_2.len()].copy_from_slice(&pv2_2);
-        v[i3..i3 + pv2_1.len() + pv2_2.len() + pv2_3.len()].copy_from_slice(&pv2_3);
+        v[i3 + pv2_1.len()..i3 + pv2_1.len() + pv2_2.len()].copy_from_slice(&pv2_2);
+        v[i3 + pv2_1.len() + pv2_2.len()..i3 + pv2_1.len() + pv2_2.len() + pv2_3.len()]
+            .copy_from_slice(&pv2_3);
     }
 }
 
@@ -378,7 +387,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
 
                 let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
                 // merge_3(left_input, mid_input, right_input, output_slice);
-                merge_3_par(left_input, mid_input, right_input, output_slice);
+                merge_3_par(left_input, mid_input, right_input, output_slice, 100);
             }
             destination_index
         };
@@ -463,7 +472,7 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     let mut result_slices = schedule_join3(
         k,
         &|l: SortingSlices<T>, m, r| subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r)),
-        500,
+        5000,
     );
 
     if result_slices.i != 0 {
@@ -473,7 +482,7 @@ pub fn adaptive_sort<T: Ord + Copy + Send + Sync>(slice: &mut [T]) {
     }
 }
 fn main() {
-    let size = 100_000;
+    let size = 1_000_000;
     let v: Vec<u32> = (0..size).collect();
     let mut shuffled: Vec<u32> = (0..size).collect();
 
