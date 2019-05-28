@@ -3,5 +3,5 @@ pub use crate::iter::{
     BasicParallelIterator, BlockedParallelIterator, IndexedParallelIterator, IntoParallelIterator,
     ParallelIterator,
 };
-pub use crate::schedulers::schedule_join3;
-pub use crate::utils::*;
+pub use crate::schedulers::{schedule_join2, schedule_join3};
+//pub use crate::utils::*;

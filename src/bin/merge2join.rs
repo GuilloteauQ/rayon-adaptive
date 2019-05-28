@@ -1,5 +1,5 @@
 //! adaptive parallel merge sort.
-use crate::adaptive_sort_join3;
+use crate::adaptive_sort_join2;
 use crate::prelude::*;
 // use rayon_adaptive::Policy;
 use rand::seq::SliceRandom;
@@ -26,18 +26,18 @@ fn main() {
     #[cfg(feature = "logs")]
     {
         let pool = rayon_logs::ThreadPoolBuilder::new()
-            .num_threads(3)
+            .num_threads(2)
             .build()
             .expect("failed");
         let (_, log) = pool
-            .logging_install(|| adaptive_sort_join3(&mut shuffled, block_size, block_size_fuse));
+            .logging_install(|| adaptive_sort_join2(&mut shuffled, block_size, block_size_fuse));
 
         log.save_svg("merge_sort_join3_par_fuse.svg")
             .expect("saving svg file failed");
     }
     #[cfg(not(feature = "logs"))]
     {
-        adaptive_sort_join3(&mut shuffled, block_size, block_size_fuse);
+        adaptive_sort_join2(&mut shuffled, block_size, block_size_fuse);
     }
     assert_eq!(v, shuffled);
 }

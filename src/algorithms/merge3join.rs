@@ -3,9 +3,11 @@
 // use crate::schedulers::schedule_join3;
 // use crate::utils::merge_2;
 // sort related code
+
+#![macro_use]
+
 use crate::prelude::*;
 
-#[macro_use]
 use crate::algorithms::merging_algorithms::*;
 
 #[cfg(feature = "logs")]

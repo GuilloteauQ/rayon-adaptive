@@ -34,5 +34,9 @@ pub(crate) mod utils;
 
 /// Algorithms
 #[macro_use]
+pub use algorithms::merging_algorithms::*;
+
 pub mod algorithms;
+pub use algorithms::merge2join::adaptive_sort_join2;
+pub use algorithms::merge3_by_2_join::adaptive_sort_join3_by_2;
 pub use algorithms::merge3join::adaptive_sort_join3;

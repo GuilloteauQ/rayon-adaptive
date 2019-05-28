@@ -1,6 +1,6 @@
 //! adaptive parallel merge sort.
 // use crate::divisibility::divisible::{lllllDivisible;
-// use crate::schedulers::schedule_join3;
+use crate::schedulers::schedule_join2;
 // use crate::utils::merge_2;
 // sort related code
 use crate::prelude::*;
