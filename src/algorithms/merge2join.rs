@@ -5,15 +5,28 @@ use crate::schedulers::schedule_join2;
 // sort related code
 use crate::prelude::*;
 
-#[macro_use]
-use crate::algorithms::merging_algorithms::*;
-
 #[cfg(feature = "logs")]
 extern crate rayon_logs as rayon;
 
 #[cfg(feature = "logs")]
 use rayon_logs::subgraph;
 
+macro_rules! fuse_multiple_slices {
+    ( $left:expr ) => {
+        $left
+    };
+    ( $left:expr, $($rest:expr),+ ) => {
+        {
+            let s1 = $left;
+            let ptr1 = s1.as_mut_ptr();
+            let s2 = fuse_multiple_slices!($($rest),+);
+            unsafe {
+                assert_eq!(ptr1.add(s1.len()) as *const T, s2.as_ptr());
+                std::slice::from_raw_parts_mut(ptr1, s1.len() + s2.len())
+            }
+        }
+    };
+}
 /// We'll need slices of several vectors at once.
 struct SortingSlices<'a, T: 'a> {
     s: Vec<&'a mut [T]>,

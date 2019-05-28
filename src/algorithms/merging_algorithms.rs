@@ -6,24 +6,6 @@ extern crate rayon_logs as rayon;
 use rayon_logs::subgraph;
 use std::iter::repeat;
 
-#[macro_export]
-macro_rules! fuse_multiple_slices {
-    ( $left:expr ) => {
-        $left
-    };
-    ( $left:expr, $($rest:expr),+ ) => {
-        {
-            let s1 = $left;
-            let ptr1 = s1.as_mut_ptr();
-            let s2 = fuse_multiple_slices!($($rest),+);
-            unsafe {
-                assert_eq!(ptr1.add(s1.len()) as *const T, s2.as_ptr());
-                std::slice::from_raw_parts_mut(ptr1, s1.len() + s2.len())
-            }
-        }
-    };
-}
-
 /// Takes 2 slices as well as their staring index
 /// and fill 'r' with the merged data (also update o)
 pub fn merge_2<'a, T: 'a + Ord + Copy>(
@@ -292,7 +274,7 @@ pub(crate) fn merge_3_by_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
     }
 }
 /// Takes 3 slices and returns the merged data in vector
-/// This function is iterative
+/// This function is sequential
 pub(crate) fn merge_3<'a, T: 'a + Ord + Copy>(s1: &[T], s2: &[T], s3: &[T], mut v: &mut [T]) {
     let len1 = s1.len();
     let len2 = s2.len();
