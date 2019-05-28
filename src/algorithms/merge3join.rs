@@ -1,5 +1,8 @@
 //! adaptive parallel merge sort.
-use rayon_adaptive::prelude::*;
+// use crate::divisibility::divisible::{lllllDivisible;
+// use crate::schedulers::schedule_join3;
+// use crate::utils::merge_2;
+use crate::prelude::*;
 // use rayon_adaptive::Policy;
 #[cfg(feature = "logs")]
 extern crate rayon_logs as rayon;
@@ -250,6 +253,7 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
     );
 }
 
+/// Parallel merge 3 to 3
 fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
     s1: &[T],
     s2: &[T],
@@ -432,6 +436,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
     }
 }
 
+/// Parallel sort join 3 to 3
 pub fn adaptive_sort_join3<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     block_size: usize,
