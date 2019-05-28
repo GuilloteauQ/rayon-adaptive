@@ -129,6 +129,168 @@ fn subslice_without_first_value<T: Eq>(slice: &[T]) -> &[T] {
     }
 }
 
+/// split large array at midpoint and small array where needed for merge.
+fn merge_split<'a, T: Ord>(
+    large: &'a [T],
+    small: &'a [T],
+) -> ((&'a [T], &'a [T], &'a [T]), (&'a [T], &'a [T], &'a [T])) {
+    let middle = large.len() / 2;
+    let split_large = split_around(large, middle);
+    let split_small = match small.binary_search(&large[middle]) {
+        Ok(i) => split_around(small, i),
+        Err(i) => {
+            let (small1, small3) = small.split_at(i);
+            (small1, &small[0..0], small3)
+        }
+    };
+    (split_large, split_small)
+}
+
+/// Takes 2 slices and merge them recursively in parallel
+pub(crate) fn merge_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
+    s1: &[T],
+    s2: &[T],
+    mut v: &mut [T],
+    min_size: usize,
+) {
+    let len1 = s1.len();
+    let len2 = s2.len();
+
+    if len1 <= min_size || len2 <= min_size {
+        #[cfg(not(feature = "logs"))]
+        merge_2(s1, 0, s2, 0, &mut v, 0);
+        #[cfg(feature = "logs")]
+        subgraph("Merge seq", min_size, || merge_2(s1, 0, s2, 0, &mut v, 0));
+    } else {
+        let ((l1, l2, l3), (r1, r2, r3)) = if s1.len() > s2.len() {
+            merge_split(s1, s2)
+        } else {
+            let (r, l) = merge_split(s2, s1);
+            (l, r)
+        };
+
+        // [ less than pivot | pivot(s) | more than pivot ]
+        // ^                 ^          ^
+        // |                 |          |
+        // 0                 i1         i2
+
+        let i1 = l1.len() + r1.len();
+        let i2 = i1 + l2.len() + r2.len();
+
+        let x = s1[0];
+        let mut v_first_half = vec![x; i1];
+
+        #[cfg(not(feature = "logs"))]
+        rayon::join(
+            || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
+            || merge_2_par(&l3, &r3, &mut v[i2..], min_size),
+        );
+
+        #[cfg(feature = "logs")]
+        subgraph("Fuse par", len1 + len2 + len3, || {
+            rayon::join(
+                || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
+                || merge_2_par(&l3, &r3, &mut v[i2..], min_size),
+            )
+        });
+
+        v[..i1].copy_from_slice(&v_first_half);
+        v[i1..i1 + l2.len()].copy_from_slice(&l2);
+        v[i1 + l2.len()..i1 + l2.len() + r2.len()].copy_from_slice(&r2);
+    }
+}
+
+fn merge_split_3_by_2<'a, T: 'a + Ord + Copy + Send + Sync>(
+    large: &'a [T],
+    mid: &'a [T],
+    small: &'a [T],
+) -> (
+    (&'a [T], &'a [T], &'a [T]),
+    (&'a [T], &'a [T], &'a [T]),
+    (&'a [T], &'a [T], &'a [T]),
+) {
+    let len_large = large.len();
+    let half = len_large / 2;
+
+    // ----- FIRST THIRD -----
+    let split_large = split_around(large, half);
+    let split_mid = match mid.binary_search(&large[half]) {
+        Ok(i) => split_around(mid, i),
+        Err(i) => {
+            let (mid1, mid3) = mid.split_at(i);
+            (mid1, &mid[0..0], mid3)
+        }
+    };
+    let split_small = match small.binary_search(&large[half]) {
+        Ok(i) => split_around(small, i),
+        Err(i) => {
+            let (small1, small3) = small.split_at(i);
+            (small1, &small[0..0], small3)
+        }
+    };
+    (split_large, split_mid, split_small)
+}
+
+/// Takes 3 slices and merge them recursively in parallel
+/// but only by cuting in 2
+pub(crate) fn merge_3_by_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
+    s1: &[T],
+    s2: &[T],
+    s3: &[T],
+    mut v: &mut [T],
+    min_size: usize,
+) {
+    let len1 = s1.len();
+    let len2 = s2.len();
+    let len3 = s3.len();
+
+    if len1 <= min_size || len2 <= min_size || len3 <= min_size {
+        #[cfg(not(feature = "logs"))]
+        merge_3(s1, s2, s3, &mut v);
+        #[cfg(feature = "logs")]
+        subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
+    } else {
+        let ((l1, l2, l3), (m1, m2, m3), (r1, r2, r3)) = if len1 > len2 && len1 > len3 {
+            merge_split_3_by_2(s1, s2, s3)
+        } else if len2 > len1 && len2 > len3 {
+            let (m, l, r) = merge_split_3_by_2(s2, s1, s3);
+            (l, m, r)
+        } else {
+            let (r, m, l) = merge_split_3_by_2(s3, s2, s1);
+            (l, m, r)
+        };
+
+        // [ less than pivot | pivot(s) | more than pivot ]
+        // ^                 ^          ^
+        // |                 |          |
+        // 0                 i1         i2
+
+        let i1 = l1.len() + m1.len() + r1.len();
+        let i2 = i1 + l2.len() + m2.len() + r2.len();
+
+        let x = s1[0];
+        let mut v_first_half = vec![x; i1];
+
+        #[cfg(not(feature = "logs"))]
+        rayon::join(
+            || merge_3_by_2_par(&l1, &m1, &r1, &mut v_first_half, min_size),
+            || merge_3_by_2_par(&l3, &m3, &r3, &mut v[i2..], min_size),
+        );
+
+        #[cfg(feature = "logs")]
+        subgraph("Fuse par", len1 + len2 + len3, || {
+            rayon::join(
+                || merge_3_by_2_par(&l1, &m1, &r1, &mut v_first_half, min_size),
+                || merge_3_by_2_par(&l3, &m3, &r3, &mut v[i2..], min_size),
+            )
+        });
+
+        v[..i1].copy_from_slice(&v_first_half);
+        v[i1..i1 + l2.len()].copy_from_slice(&l2);
+        v[i1 + l2.len()..i1 + l2.len() + m2.len()].copy_from_slice(&m2);
+        v[i1 + l2.len() + m2.len()..i2].copy_from_slice(&r2);
+    }
+}
 /// Takes 3 slices and returns the merged data in vector
 /// This function is iterative
 pub(crate) fn merge_3<'a, T: 'a + Ord + Copy>(s1: &[T], s2: &[T], s3: &[T], mut v: &mut [T]) {
@@ -252,7 +414,7 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
         + split_mid_second_third.1.len()
         + split_small_second_third.1.len();
 
-    return (
+    (
         (
             0,
             (
@@ -293,7 +455,7 @@ fn merge_3_par_aux<'a, T: 'a + Ord + Copy + Sync + Send>(
                 &split_small_second_third.2,
             ),
         ),
-    );
+    )
 }
 
 /// Parallel merge 3 to 3
@@ -309,7 +471,9 @@ pub(crate) fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
     let len3 = s3.len();
 
     if len1 <= min_size || len2 <= min_size || len3 <= min_size {
-        // merge_3(s1, s2, s3, &mut v);
+        #[cfg(not(feature = "logs"))]
+        merge_3(s1, s2, s3, &mut v);
+        #[cfg(feature = "logs")]
         subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
     } else {
         let (
@@ -356,6 +520,18 @@ pub(crate) fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
 
         let mut v_second_third = vec![x; i3 - i2];
 
+        #[cfg(not(feature = "logs"))]
+        rayon::join(
+            || {
+                rayon::join(
+                    || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
+                    || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
+                )
+            },
+            || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
+        );
+
+        #[cfg(feature = "logs")]
         subgraph("Fuse par", len1 + len2 + len3, || {
             rayon::join(
                 || {

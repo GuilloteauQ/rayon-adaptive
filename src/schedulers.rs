@@ -2,7 +2,7 @@
 //! All schedulers are written here.
 use crate::prelude::*;
 use crate::smallchannel::small_channel;
-use crate::utils::{merge_3, power_sizes};
+use crate::utils::power_sizes;
 use crate::Policy;
 
 /// reduce parallel iterator
@@ -78,6 +78,40 @@ where
     }
 }
 
+/// Split the iterator in 2 parts and then reduce 2 to 1
+pub fn schedule_join2<P, I, OP>(iterator: I, op: &OP, sequential_fallback: usize) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    OP: Fn(I::Item, I::Item) -> I::Item + Sync,
+{
+    let full_length = iterator
+        .base_length()
+        .expect("running on infinite iterator");
+    if full_length <= sequential_fallback {
+        let (mut seq_iter, _remaining) = iterator.iter(full_length);
+        let mut acc = seq_iter.next().unwrap();
+        while let Some(m) = seq_iter.next() {
+            let r = match seq_iter.next() {
+                Some(r) => r,
+                None => break,
+            };
+            acc = op(acc, r);
+        }
+        acc
+    } else {
+        let block = full_length / 2;
+        let block_sizes = vec![block, full_length - block];
+        let mut work_blocks = iterator.blocks(block_sizes.into_iter());
+        let (left, right) = (work_blocks.next().unwrap(), work_blocks.next().unwrap());
+        let (left_result, right_result) = rayon::join(
+            || schedule_join2(left, op, sequential_fallback),
+            || schedule_join2(right, op, sequential_fallback),
+        );
+        op(left_result, right_result)
+    }
+}
+
 /// Split the iterator in 3 parts and then reduce 3 to 1
 pub fn schedule_join3<P, I, OP>(iterator: I, op: &OP, sequential_fallback: usize) -> I::Item
 where
@@ -88,16 +122,10 @@ where
     let full_length = iterator
         .base_length()
         .expect("running on infinite iterator");
-    // println!("full_length: {}", full_length);
     if full_length <= sequential_fallback {
         let (mut seq_iter, _remaining) = iterator.iter(full_length);
         let mut acc = seq_iter.next().unwrap();
-        // loop {
         while let Some(m) = seq_iter.next() {
-            // let m = match seq_iter.next() {
-            //     Some(m) => m,
-            //     None => break,
-            // };
             let r = match seq_iter.next() {
                 Some(r) => r,
                 None => break,
@@ -105,15 +133,6 @@ where
             acc = op(acc, m, r);
         }
         acc
-    // seq_iter
-    //     .collect::<Vec<I::Item>>()
-    //     .chunks(2)
-    //     .into_iter()
-    //     .fold(acc, |l, v| {
-    //         let m = &v[0];
-    //         let r = &v[1];
-    //         op(l, *m, r)
-    //     })
     } else {
         let block = full_length / 3;
         let block_sizes = vec![block, block, full_length - 2 * block];

@@ -42,7 +42,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
 
                 let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
                 #[cfg(not(feature = "logs"))]
-                merge_3_par(
+                merge_3_by_2_par(
                     left_input,
                     mid_input,
                     right_input,
@@ -52,7 +52,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
 
                 #[cfg(feature = "logs")]
                 //subgraph("Fuse rec master", full_size, || {
-                merge_3_par(
+                merge_3_by_2_par(
                     left_input,
                     mid_input,
                     right_input,
@@ -111,7 +111,7 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
 }
 
 /// Parallel sort join 3 to 3
-pub fn adaptive_sort_join3<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_join3_by_2<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     block_size: usize,
     block_size_fuse: usize,

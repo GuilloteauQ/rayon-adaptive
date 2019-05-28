@@ -22,43 +22,26 @@ struct SortingSlices<'a, T: 'a> {
 
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
     /// Call parallel merge on the right slices.
-    fn fuse(self, mid: Self, right: Self, block_size_fuse: usize) -> Self {
+    fn fuse(self, right: Self, block_size_fuse: usize) -> Self {
         let mut left = self;
-        let mut mid = mid;
         let mut right = right;
 
         let destination_index = {
-            let destination_index = (0..3)
-                .find(|&x| x != left.i && x != mid.i && x != right.i)
-                .unwrap();
+            let destination_index = (0..3).find(|&x| x != left.i && x != right.i).unwrap();
             {
                 let left_index = left.i;
-                let mid_index = mid.i;
                 let right_index = right.i;
 
                 let (left_input, left_output) = left.mut_couple(left_index, destination_index);
-                let (mid_input, mid_output) = mid.mut_couple(mid_index, destination_index);
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
 
-                let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
+                let output_slice = fuse_multiple_slices!(left_output, right_output);
                 #[cfg(not(feature = "logs"))]
-                merge_3_par(
-                    left_input,
-                    mid_input,
-                    right_input,
-                    output_slice,
-                    block_size_fuse,
-                );
+                merge_2_par(left_input, right_input, output_slice, block_size_fuse);
 
                 #[cfg(feature = "logs")]
                 //subgraph("Fuse rec master", full_size, || {
-                merge_3_par(
-                    left_input,
-                    mid_input,
-                    right_input,
-                    output_slice,
-                    block_size_fuse,
-                );
+                merge_2_par(left_input, right_input, output_slice, block_size_fuse);
                 //});
             }
             destination_index
@@ -66,9 +49,8 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let fused_slices: Vec<_> = left
             .s
             .into_iter()
-            .zip(mid.s.into_iter())
             .zip(right.s.into_iter())
-            .map(|((left_s, mid_s), right_s)| fuse_multiple_slices!(left_s, mid_s, right_s))
+            .map(|(left_s, right_s)| fuse_multiple_slices!(left_s, right_s))
             .collect();
         SortingSlices {
             s: fused_slices,
@@ -110,8 +92,8 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
     }
 }
 
-/// Parallel sort join 3 to 3
-pub fn adaptive_sort_join3<T: Ord + Copy + Send + Sync>(
+/// Parallel sort join 2 to 2
+pub fn adaptive_sort_join2<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     block_size: usize,
     block_size_fuse: usize,
@@ -143,18 +125,16 @@ pub fn adaptive_sort_join3<T: Ord + Copy + Send + Sync>(
     });
 
     #[cfg(not(feature = "logs"))]
-    let mut result_slices = schedule_join3(
+    let mut result_slices = schedule_join2(
         k,
-        &|l: SortingSlices<T>, m, r| l.fuse(m, r, block_size_fuse),
+        &|l: SortingSlices<T>, r| l.fuse(r, block_size_fuse),
         block_size,
     );
 
     #[cfg(feature = "logs")]
-    let mut result_slices = schedule_join3(
+    let mut result_slices = schedule_join2(
         k,
-        &|l: SortingSlices<T>, m, r| {
-            subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, block_size_fuse))
-        },
+        &|l: SortingSlices<T>, r| subgraph("Fuse", 2 * l.s[0].len(), || l.fuse(r, block_size_fuse)),
         block_size,
     );
 
