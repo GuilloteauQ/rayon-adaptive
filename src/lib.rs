@@ -29,5 +29,7 @@ pub enum Policy {
 /// All scheduling algorithms.
 pub(crate) mod schedulers;
 
+pub mod algorithms;
 pub(crate) mod smallchannel;
 pub(crate) mod utils;
+pub use algorithms::merge3join::adaptive_sort_join3;
