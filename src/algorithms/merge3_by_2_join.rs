@@ -11,6 +11,8 @@ extern crate rayon_logs as rayon;
 #[cfg(feature = "logs")]
 use rayon_logs::subgraph;
 
+use crate::algorithms::merging_algorithms::*;
+
 macro_rules! fuse_multiple_slices {
     ( $left:expr ) => {
         $left
