@@ -24,6 +24,54 @@ macro_rules! fuse_multiple_slices {
     };
 }
 
+/// Takes 2 slices as well as their staring index
+/// and fill 'r' with the merged data (also update o)
+pub fn merge_2<'a, T: 'a + Ord + Copy>(
+    s1: &[T],
+    mut i1: usize,
+    s2: &[T],
+    mut i2: usize,
+    r: &mut [T],
+    mut o: usize,
+) {
+    let len1 = s1.len();
+    let len2 = s2.len();
+
+    // if len1 == 0 {
+    //     r[o..].copy_from_slice(&s2[i2..]);
+    //     return;
+    // }
+    // if len2 == 0 {
+    //     r[o..].copy_from_slice(&s1[i1..]);
+    //     return;
+    // }
+
+    // if s1.last() < s2.first() {
+    //     r[o..].copy_from_slice(&s1[i1..]);
+    //     r[o + len1 - i1..].copy_from_slice(&s2[i2..]);
+    //     return;
+    // }
+    // if s1.first() > s2.last() {
+    //     r[o..].copy_from_slice(&s2[i2..]);
+    //     r[o + len2 - i2..].copy_from_slice(&s1[i1..]);
+    //     return;
+    // }
+    while i1 < len1 && i2 < len2 {
+        if s1[i1] <= s2[i2] {
+            r[o] = s1[i1];
+            i1 += 1;
+        } else {
+            r[o] = s2[i2];
+            i2 += 1;
+        }
+        o += 1;
+    }
+    if i1 < len1 {
+        r[o..].copy_from_slice(&s1[i1..]);
+    } else {
+        r[o..].copy_from_slice(&s2[i2..]);
+    }
+}
 /// find subslice without last value in given sorted slice.
 fn subslice_without_last_value<T: Eq>(slice: &[T]) -> &[T] {
     match slice.split_last() {
