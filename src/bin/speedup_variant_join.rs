@@ -1,7 +1,7 @@
-use crate::{adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_by_2};
 use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon::prelude::*;
+use rayon_adaptive::{adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_by_2};
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{once, repeat_with};
@@ -78,7 +78,7 @@ fn times_by_processors<
     threads_numbers: THREADS,
 ) -> impl Iterator<Item = f64> {
     threads_numbers.into_iter().map(move |threads| {
-        let pool = ThreadPoolBuilder::new()
+        let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads)
             .build()
             .expect("building pool failed");
@@ -87,7 +87,9 @@ fn times_by_processors<
 }
 
 fn main() {
-    let iterations = 100;
+    let block_size = 100_000;
+    let block_size_fuse = 100_000;
+    let iterations = 10;
     let sizes = vec![
         // 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
         10_000_000,
@@ -141,7 +143,7 @@ fn main() {
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("compa_join_28052019_{}.dat", generator_name)).unwrap();
+        let mut file = File::create(format!("compa_join_29052019_{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
             &mut file,

@@ -169,7 +169,7 @@ pub(crate) fn merge_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
         );
 
         #[cfg(feature = "logs")]
-        subgraph("Fuse par", len1 + len2 + len3, || {
+        subgraph("Fuse par", i1 + i2 + r3.len() + l3.len(), || {
             rayon::join(
                 || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
                 || merge_2_par(&l3, &r3, &mut v[i2..], min_size),

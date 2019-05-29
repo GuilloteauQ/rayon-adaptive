@@ -1,6 +1,5 @@
 //! adaptive parallel merge sort.
-use crate::adaptive_sort_join2;
-use crate::prelude::*;
+use rayon_adaptive::adaptive_sort_join2;
 // use rayon_adaptive::Policy;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -32,7 +31,7 @@ fn main() {
         let (_, log) = pool
             .logging_install(|| adaptive_sort_join2(&mut shuffled, block_size, block_size_fuse));
 
-        log.save_svg("merge_sort_join3_par_fuse.svg")
+        log.save_svg("merge_sort_join2_par_fuse.svg")
             .expect("saving svg file failed");
     }
     #[cfg(not(feature = "logs"))]

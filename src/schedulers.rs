@@ -92,11 +92,7 @@ where
         let (mut seq_iter, _remaining) = iterator.iter(full_length);
         let mut acc = seq_iter.next().unwrap();
         while let Some(m) = seq_iter.next() {
-            let r = match seq_iter.next() {
-                Some(r) => r,
-                None => break,
-            };
-            acc = op(acc, r);
+            acc = op(acc, m);
         }
         acc
     } else {
