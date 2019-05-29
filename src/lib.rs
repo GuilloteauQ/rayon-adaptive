@@ -42,3 +42,4 @@ pub use algorithms::merge2join::adaptive_sort_join2;
 pub use algorithms::merge3_by_2_join::adaptive_sort_join3_by_2;
 pub use algorithms::merge3join::adaptive_sort_join3;
 pub use algorithms::merge3join_no_copy::adaptive_sort_join3_no_copy;
+pub use algorithms::merge3join_swap::adaptive_sort_join3_swap;

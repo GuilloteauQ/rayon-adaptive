@@ -18,6 +18,7 @@ do for [desc in "random sorted reversed"] {
         filename using (($1==size)?$2:1/0):($3/$6) with linespoints title "3/2 Join" linecolor 3, \
         filename using (($1==size)?$2:1/0):($3/$7) with linespoints title "Rayon" linecolor 4, \
         filename using (($1==size)?$2:1/0):($3/$8) with linespoints title "3/3 Join no copy" linecolor 6, \
+        filename using (($1==size)?$2:1/0):($3/$9) with linespoints title "3/3 Join no copy + swap" linecolor 7, \
         filename using (($1==size)?$2:1/0):($3/$3) with linespoints title "Seq" linecolor 5, \
     }
 
