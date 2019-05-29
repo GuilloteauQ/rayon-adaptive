@@ -45,6 +45,22 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let mut mid = mid;
         let mut right = right;
 
+        // println!(
+        //     "###########################################################################\n\
+        //      LEFT: size: {}, i: {}, depth: {}\n\
+        //      MID: size: {}, i: {}, depth: {}\n\
+        //      RIGHT: size: {}, i: {}, depth: {}",
+        //     left.base_length().unwrap(),
+        //     left.i,
+        //     left.depth,
+        //     mid.base_length().unwrap(),
+        //     mid.i,
+        //     mid.depth,
+        //     right.base_length().unwrap(),
+        //     right.i,
+        //     right.depth
+        // );
+
         let depth = left.depth;
 
         let destination_index = {
@@ -52,7 +68,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             //      .find(|&x| x != left.i && x != mid.i && x != right.i)
             //      .unwrap();
 
-            assert_eq!(left.i, mid.i);
+            assert!(left.i == mid.i || mid.i == right.i);
 
             let destination_index = if depth % 2 == 1 {
                 // If the depth is even
@@ -79,6 +95,10 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                     2
                 }
             };
+            // println!(
+            //     "L: {}, M: {}, R: {}, destination: {}",
+            //     left.i, mid.i, right.i, destination_index
+            // );
 
             {
                 let left_index = left.i;
@@ -123,7 +143,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
             s: fused_slices,
             i: destination_index,
             split_in_3: true,
-            depth: depth - 1,
+            depth: depth.min(right.depth) - 1,
         }
     }
 
@@ -153,25 +173,39 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
         self.s[0].base_length()
     }
     fn divide_at(self, i: usize) -> (Self, Self) {
+        // println!(
+        //     "I am splittin an array of size {} at position {}, split_in_3: {} depth: {}",
+        //     self.base_length().unwrap(),
+        //     i,
+        //     self.split_in_3,
+        //     self.depth
+        // );
+        let len = self.base_length().unwrap();
         let split_in_3_parent = self.split_in_3;
-        let right_depth = self.depth + 1;
-        let left_depth = if split_in_3_parent {
-            self.depth
-        } else {
+        // let left_depth = self.depth + 1;
+        let left_depth = if split_in_3_parent && len != i {
             self.depth + 1
+        } else {
+            self.depth
+        };
+
+        let right_depth = if split_in_3_parent && len != i {
+            self.depth + 1
+        } else {
+            self.depth
         };
         let v: (Vec<_>, Vec<_>) = self.s.into_iter().map(|s| s.split_at_mut(i)).unzip();
         (
             SortingSlices {
                 s: v.0,
                 i: self.i,
-                split_in_3: !split_in_3_parent,
+                split_in_3: true, //len != i
                 depth: left_depth,
             },
             SortingSlices {
                 s: v.1,
                 i: self.i,
-                split_in_3: true,
+                split_in_3: !split_in_3_parent,
                 depth: right_depth,
             },
         )
@@ -184,6 +218,7 @@ pub fn adaptive_sort_join3_no_copy<T: Ord + Copy + Send + Sync>(
     block_size: usize,
     block_size_fuse: usize,
 ) {
+    let slice_len = slice.len();
     let mut tmp_slice1 = Vec::with_capacity(slice.base_length().unwrap());
     let mut tmp_slice2 = Vec::with_capacity(slice.base_length().unwrap());
     unsafe {
@@ -196,6 +231,13 @@ pub fn adaptive_sort_join3_no_copy<T: Ord + Copy + Send + Sync>(
         i: 0,
         split_in_3: true,
         depth: 0,
+    };
+
+    let new_block_size = {
+        let recursions = (((slice_len as f64) / (block_size as f64)).log(3.0).ceil() / 2.0 - 0.5)
+            .ceil() as usize
+            * 2;
+        ((slice_len as f64) / (recursions as f64).powf(3.0)).ceil() as usize
     };
 
     #[cfg(not(feature = "logs"))]
@@ -215,17 +257,17 @@ pub fn adaptive_sort_join3_no_copy<T: Ord + Copy + Send + Sync>(
     #[cfg(not(feature = "logs"))]
     let mut result_slices = schedule_join3(
         k,
-        &|l: SortingSlices<T>, m, r| l.fuse(m, r, block_size_fuse),
-        block_size,
+        &|l: SortingSlices<T>, m, r| l.fuse(m, r, new_block_size),
+        new_block_size,
     );
 
     #[cfg(feature = "logs")]
     let mut result_slices = schedule_join3(
         k,
         &|l: SortingSlices<T>, m, r| {
-            subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, block_size_fuse))
+            subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, new_block_size))
         },
-        block_size,
+        new_block_size,
     );
 
     if result_slices.i != 0 {

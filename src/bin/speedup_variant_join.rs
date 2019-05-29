@@ -1,7 +1,9 @@
 use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon::prelude::*;
-use rayon_adaptive::{adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_by_2};
+use rayon_adaptive::{
+    adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_by_2, adaptive_sort_join3_no_copy,
+};
 use std::fs::File;
 use std::io::prelude::*;
 use std::iter::{once, repeat_with};
@@ -138,6 +140,12 @@ fn main() {
     .chain(once((
         Box::new(|mut v: Vec<u32>| v.par_sort()) as Box<Fn(Vec<u32>) + Sync + Send>,
         "Rayon".to_string(),
+    )))
+    .chain(once((
+        Box::new(move |mut v: Vec<u32>| {
+            adaptive_sort_join3_no_copy(&mut v, block_size, block_size_fuse)
+        }) as Box<Fn(Vec<u32>) + Sync + Send>,
+        format!("3/3-Join no copy"),
     )))
     .collect();
 
