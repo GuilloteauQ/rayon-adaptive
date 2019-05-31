@@ -8,12 +8,12 @@ use crate::prelude::*;
 
 use crate::algorithms::merging_algorithms::*;
 
-#[cfg(feature = "logs")]
-extern crate rayon_logs as rayon;
-
-#[cfg(feature = "logs")]
-use rayon_logs::subgraph;
-
+// #[cfg(feature = "logs")]
+// extern crate rayon_logs as rayon;
+//
+// #[cfg(feature = "logs")]
+// use rayon_logs::subgraph;
+//
 macro_rules! fuse_multiple_slices {
     ( $left:expr ) => {
         $left
@@ -57,7 +57,7 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                 let (right_input, right_output) = right.mut_couple(right_index, destination_index);
 
                 let output_slice = fuse_multiple_slices!(left_output, mid_output, right_output);
-                #[cfg(not(feature = "logs"))]
+                // #[cfg(not(feature = "logs"))]
                 merge_3_par(
                     left_input,
                     mid_input,
@@ -66,16 +66,16 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
                     block_size_fuse,
                 );
 
-                #[cfg(feature = "logs")]
-                //subgraph("Fuse rec master", full_size, || {
-                merge_3_par(
-                    left_input,
-                    mid_input,
-                    right_input,
-                    output_slice,
-                    block_size_fuse,
-                );
-                //});
+                // #[cfg(feature = "logs")]
+                // //subgraph("Fuse rec master", full_size, || {
+                // merge_3_par(
+                //     left_input,
+                //     mid_input,
+                //     right_input,
+                //     output_slice,
+                //     block_size_fuse,
+                // );
+                // //});
             }
             destination_index
         };
@@ -144,35 +144,35 @@ pub fn adaptive_sort_join3<T: Ord + Copy + Send + Sync>(
         i: 0,
     };
 
-    #[cfg(not(feature = "logs"))]
+    // #[cfg(not(feature = "logs"))]
     let k = slices.work(|mut slices, size| {
         slices.s[slices.i][0..size].sort();
         slices
     });
 
-    #[cfg(feature = "logs")]
-    let k = slices.work(|mut slices, size| {
-        subgraph("Sort", slices.s[0].len(), || {
-            slices.s[slices.i][0..size].sort();
-            slices
-        })
-    });
+    // #[cfg(feature = "logs")]
+    // let k = slices.work(|mut slices, size| {
+    //     subgraph("Sort", slices.s[0].len(), || {
+    //         slices.s[slices.i][0..size].sort();
+    //         slices
+    //     })
+    // });
 
-    #[cfg(not(feature = "logs"))]
+    // #[cfg(not(feature = "logs"))]
     let mut result_slices = schedule_join3(
         k,
         &|l: SortingSlices<T>, m, r| l.fuse(m, r, block_size_fuse),
         block_size,
     );
 
-    #[cfg(feature = "logs")]
-    let mut result_slices = schedule_join3(
-        k,
-        &|l: SortingSlices<T>, m, r| {
-            subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, block_size_fuse))
-        },
-        block_size,
-    );
+    // #[cfg(feature = "logs")]
+    // let mut result_slices = schedule_join3(
+    //     k,
+    //     &|l: SortingSlices<T>, m, r| {
+    //         subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, block_size_fuse))
+    //     },
+    //     block_size,
+    // );
 
     if result_slices.i != 0 {
         let i = result_slices.i;

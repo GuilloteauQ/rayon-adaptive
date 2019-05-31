@@ -1,9 +1,9 @@
 use crate::prelude::*;
-#[cfg(feature = "logs")]
-extern crate rayon_logs as rayon;
-
-#[cfg(feature = "logs")]
-use rayon_logs::subgraph;
+// #[cfg(feature = "logs")]
+// extern crate rayon_logs as rayon;
+//
+// #[cfg(feature = "logs")]
+// use rayon_logs::subgraph;
 use std::iter::repeat;
 
 /// Takes 2 slices as well as their staring index
@@ -139,10 +139,10 @@ pub(crate) fn merge_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
     let len2 = s2.len();
 
     if len1 <= min_size || len2 <= min_size {
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         merge_2(s1, 0, s2, 0, &mut v, 0);
-        #[cfg(feature = "logs")]
-        subgraph("Merge seq", min_size, || merge_2(s1, 0, s2, 0, &mut v, 0));
+    // #[cfg(feature = "logs")]
+    // subgraph("Merge seq", min_size, || merge_2(s1, 0, s2, 0, &mut v, 0));
     } else {
         let ((l1, l2, l3), (r1, r2, r3)) = if s1.len() > s2.len() {
             merge_split(s1, s2)
@@ -162,19 +162,19 @@ pub(crate) fn merge_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
         let x = s1[0];
         let mut v_first_half = vec![x; i1];
 
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         rayon::join(
             || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
             || merge_2_par(&l3, &r3, &mut v[i2..], min_size),
         );
 
-        #[cfg(feature = "logs")]
-        subgraph("Fuse par", i1 + i2 + r3.len() + l3.len(), || {
-            rayon::join(
-                || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
-                || merge_2_par(&l3, &r3, &mut v[i2..], min_size),
-            )
-        });
+        // #[cfg(feature = "logs")]
+        // subgraph("Fuse par", i1 + i2 + r3.len() + l3.len(), || {
+        //     rayon::join(
+        //         || merge_2_par(&l1, &r1, &mut v_first_half, min_size),
+        //         || merge_2_par(&l3, &r3, &mut v[i2..], min_size),
+        //     )
+        // });
 
         v[..i1].copy_from_slice(&v_first_half);
         v[i1..i1 + l2.len()].copy_from_slice(&l2);
@@ -227,10 +227,10 @@ pub(crate) fn merge_3_by_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
     let len3 = s3.len();
 
     if len1 <= min_size || len2 <= min_size || len3 <= min_size {
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         merge_3(s1, s2, s3, &mut v);
-        #[cfg(feature = "logs")]
-        subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
+    // #[cfg(feature = "logs")]
+    // subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
     } else {
         let ((l1, l2, l3), (m1, m2, m3), (r1, r2, r3)) = if len1 > len2 && len1 > len3 {
             merge_split_3_by_2(s1, s2, s3)
@@ -253,19 +253,19 @@ pub(crate) fn merge_3_by_2_par<'a, T: 'a + Ord + Copy + Send + Sync>(
         let x = s1[0];
         let mut v_first_half = vec![x; i1];
 
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         rayon::join(
             || merge_3_by_2_par(&l1, &m1, &r1, &mut v_first_half, min_size),
             || merge_3_by_2_par(&l3, &m3, &r3, &mut v[i2..], min_size),
         );
 
-        #[cfg(feature = "logs")]
-        subgraph("Fuse par", len1 + len2 + len3, || {
-            rayon::join(
-                || merge_3_by_2_par(&l1, &m1, &r1, &mut v_first_half, min_size),
-                || merge_3_by_2_par(&l3, &m3, &r3, &mut v[i2..], min_size),
-            )
-        });
+        // #[cfg(feature = "logs")]
+        // subgraph("Fuse par", len1 + len2 + len3, || {
+        //     rayon::join(
+        //         || merge_3_by_2_par(&l1, &m1, &r1, &mut v_first_half, min_size),
+        //         || merge_3_by_2_par(&l3, &m3, &r3, &mut v[i2..], min_size),
+        //     )
+        // });
 
         v[..i1].copy_from_slice(&v_first_half);
         v[i1..i1 + l2.len()].copy_from_slice(&l2);
@@ -453,10 +453,10 @@ pub(crate) fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
     let len3 = s3.len();
 
     if len1 <= min_size || len2 <= min_size || len3 <= min_size {
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         merge_3(s1, s2, s3, &mut v);
-        #[cfg(feature = "logs")]
-        subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
+    // #[cfg(feature = "logs")]
+    // subgraph("Merge seq", min_size, || merge_3(s1, s2, s3, &mut v));
     } else {
         let (
             (_, (ft1, ft2, ft3)),
@@ -502,7 +502,7 @@ pub(crate) fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
 
         let mut v_second_third = vec![x; i3 - i2];
 
-        #[cfg(not(feature = "logs"))]
+        // #[cfg(not(feature = "logs"))]
         rayon::join(
             || {
                 rayon::join(
@@ -513,18 +513,18 @@ pub(crate) fn merge_3_par<'a, T: 'a + Ord + Copy + Sync + Send>(
             || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
         );
 
-        #[cfg(feature = "logs")]
-        subgraph("Fuse par", len1 + len2 + len3, || {
-            rayon::join(
-                || {
-                    rayon::join(
-                        || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
-                        || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
-                    )
-                },
-                || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
-            );
-        });
+        // #[cfg(feature = "logs")]
+        // subgraph("Fuse par", len1 + len2 + len3, || {
+        //     rayon::join(
+        //         || {
+        //             rayon::join(
+        //                 || merge_3_par(&ft1, &ft2, &ft3, &mut v_first_third, min_size),
+        //                 || merge_3_par(&st1, &st2, &st3, &mut v_second_third, min_size),
+        //             )
+        //         },
+        //         || merge_3_par(&tt1, &tt2, &tt3, &mut v[i4..], min_size),
+        //     );
+        // });
 
         v[..i1].copy_from_slice(&v_first_third);
         v[i1..i1 + pv1_1.len()].copy_from_slice(&pv1_1);

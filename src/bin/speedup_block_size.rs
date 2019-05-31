@@ -90,13 +90,9 @@ fn times_by_processors<
 }
 
 fn main() {
-    let block_size = 100_000;
-    let block_size_fuse = 100_000;
-    let iterations = 10;
-    let sizes = vec![
-        // 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
-        10_000_000,
-    ];
+    let iterations = 1;
+    let size = 10_000_000;
+    let block_sizes = vec![50_000, 100_000, 200_000, 500_000, 1_000_000];
     let threads: Vec<usize> = (1..33).collect();
     let input_generators = vec![
         (
@@ -142,8 +138,8 @@ fn main() {
                 .iter()
                 .map(|(algo_f, _)| {
                     times_by_processors(
-                        || generator_f(*size),
-                        |v| algo_f(v, block_size),
+                        || generator_f(size),
+                        |v| algo_f(v, *block_size),
                         iterations,
                         threads.clone(),
                     )
@@ -154,8 +150,8 @@ fn main() {
                 writeln!(
                     &mut file,
                     "{}",
-                    once(size.to_string())
-                        .chain(once(threads_number.to_string()))
+                    once(threads_number.to_string())
+                        .chain(once(block_size.to_string()))
                         .chain(algo_results.iter().map(|v| v[index].to_string()))
                         .join(" ")
                 )
