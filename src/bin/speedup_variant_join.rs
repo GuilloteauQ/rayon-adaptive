@@ -2,8 +2,8 @@ use itertools::{iproduct, Itertools};
 use rand::Rng;
 use rayon::prelude::*;
 use rayon_adaptive::{
-    adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_by_2,
-    adaptive_sort_join3_no_copy, adaptive_sort_join3_swap,
+    adaptive_sort_join2, adaptive_sort_join3, adaptive_sort_join3_2_buffers,
+    adaptive_sort_join3_by_2, adaptive_sort_join3_no_copy, adaptive_sort_join3_swap,
 };
 use std::fs::File;
 use std::io::prelude::*;
@@ -150,15 +150,15 @@ fn main() {
     )))
     .chain(once((
         Box::new(move |mut v: Vec<u32>| {
-            adaptive_sort_join3_swap(&mut v, block_size, block_size_fuse)
+            adaptive_sort_join3_2_buffers(&mut v, block_size, block_size_fuse)
         }) as Box<Fn(Vec<u32>) + Sync + Send>,
-        format!("3/3-Join no copy + swap"),
+        format!("3/3-Join no copy + 2 buffers"),
     )))
     .collect();
 
     for (generator_f, generator_name) in input_generators.iter() {
         println!(">>> {}", generator_name);
-        let mut file = File::create(format!("compa_join_29052019_{}.dat", generator_name)).unwrap();
+        let mut file = File::create(format!("compa_join_03062019_{}.dat", generator_name)).unwrap();
         write!(&mut file, "#size threads ").expect("failed writing to file");
         writeln!(
             &mut file,

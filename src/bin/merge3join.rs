@@ -1,6 +1,7 @@
 //! adaptive parallel merge sort.
-use crate::adaptive_sort_join3;
-use crate::prelude::*;
+use rayon_adaptive::adaptive_sort_join3;
+// use rayon_adaptive::adaptive_sort_join3_2_buffers;
+use rayon_adaptive::prelude::*;
 // use rayon_adaptive::Policy;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
