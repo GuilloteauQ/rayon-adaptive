@@ -214,7 +214,7 @@ where
                     if c.migrated() {
                         schedule_join_context_join(i2, op, sequential_fallback, recursion_level - 1)
                     } else {
-                        let (mut seq_iter, _remaining) = iterator.iter(full_length);
+                        let (mut seq_iter, _remaining) = i2.iter(full_length);
                         let mut acc = seq_iter.next().unwrap();
                         while let Some(m) = seq_iter.next() {
                             acc = op(acc, m);

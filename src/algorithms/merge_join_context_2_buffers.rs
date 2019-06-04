@@ -98,14 +98,15 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
 }
 
 /// Parallel sort join 2 to 2
-pub fn adaptive_sort_join2<T: Ord + Copy + Send + Sync>(
+pub fn adaptive_sort_join_context_join<T: Ord + Copy + Send + Sync>(
     slice: &mut [T],
     block_size: usize,
     block_size_fuse: usize,
 ) {
-    let mut tmp_slice1 = Vec::with_capacity(slice.base_length().unwrap());
+    let len = slice.base_length().unwrap();
+    let mut tmp_slice1 = Vec::with_capacity(len);
     unsafe {
-        tmp_slice1.set_len(slice.base_length().unwrap());
+        tmp_slice1.set_len(len);
     }
 
     let slices = SortingSlices {
@@ -132,6 +133,7 @@ pub fn adaptive_sort_join2<T: Ord + Copy + Send + Sync>(
         k,
         &|l: SortingSlices<T>, r| l.fuse(r, block_size_fuse),
         block_size,
+        (len as f64 / block_size as f64).log(2.0).ceil() as usize,
     );
 
     #[cfg(feature = "logs")]
@@ -139,6 +141,7 @@ pub fn adaptive_sort_join2<T: Ord + Copy + Send + Sync>(
         k,
         &|l: SortingSlices<T>, r| subgraph("Fuse", 2 * l.s[0].len(), || l.fuse(r, block_size_fuse)),
         block_size,
+        (len as f64 / block_size as f64).log(2.0).ceil() as usize,
     );
 
     if result_slices.i != 0 {
