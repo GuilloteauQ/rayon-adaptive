@@ -207,14 +207,15 @@ where
         acc
     } else {
         let (i1, i2) = iterator.divide();
-        let (r1, r2) = if recursion_level % 2 == 0 {
+        let (r1, r2) = if recursion_level % 2 == 1 {
             rayon::join_context(
                 |_| schedule_join_context_join(i1, op, sequential_fallback, recursion_level - 1),
                 |c| {
                     if c.migrated() {
                         schedule_join_context_join(i2, op, sequential_fallback, recursion_level - 1)
                     } else {
-                        let (mut seq_iter, _remaining) = i2.iter(full_length);
+                        let len = i2.base_length().unwrap();
+                        let (mut seq_iter, _remaining) = i2.iter(len);
                         let mut acc = seq_iter.next().unwrap();
                         while let Some(m) = seq_iter.next() {
                             acc = op(acc, m);

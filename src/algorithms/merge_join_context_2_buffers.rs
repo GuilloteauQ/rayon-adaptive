@@ -38,6 +38,13 @@ struct SortingSlices<'a, T: 'a> {
 impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
     /// Call parallel merge on the right slices.
     fn fuse(self, right: Self, block_size_fuse: usize) -> Self {
+        // println!(
+        //     "Fusing: left {}, right {}\nleft.i = {}, right.i = {}",
+        //     self.base_length().unwrap(),
+        //     right.base_length().unwrap(),
+        //     self.i,
+        //     right.i
+        // );
         let mut left = self;
         let mut right = right;
 
@@ -89,6 +96,8 @@ impl<'a, T: 'a + Ord + Copy + Sync + Send> Divisible<IndexedPower> for SortingSl
         self.s[0].base_length()
     }
     fn divide_at(self, i: usize) -> (Self, Self) {
+        // let len = self.base_length().unwrap();
+        // println!("Splitting an array of size {} at index {}", len, i);
         let v: (Vec<_>, Vec<_>) = self.s.into_iter().map(|s| s.split_at_mut(i)).unzip();
         (
             SortingSlices { s: v.0, i: self.i },
@@ -103,11 +112,15 @@ pub fn adaptive_sort_join_context_join<T: Ord + Copy + Send + Sync>(
     block_size: usize,
     block_size_fuse: usize,
 ) {
-    let len = slice.base_length().unwrap();
+    let len = slice.len();
     let mut tmp_slice1 = Vec::with_capacity(len);
     unsafe {
         tmp_slice1.set_len(len);
     }
+
+    let recursions =
+        (((len as f64) / (block_size as f64)).log(2.0).ceil() / 2.0 - 0.5).ceil() as usize * 2;
+    let new_block_size = { ((len as f64) / (recursions as f64).powf(2.0)).ceil() as usize + 1 };
 
     let slices = SortingSlices {
         s: vec![slice, tmp_slice1.as_mut_slice()],
@@ -121,28 +134,28 @@ pub fn adaptive_sort_join_context_join<T: Ord + Copy + Send + Sync>(
     });
 
     #[cfg(feature = "logs")]
-    let k = slices.work(|mut slices, size| {
-        subgraph("Sort", slices.s[0].len(), || {
-            slices.s[slices.i][0..size].sort();
-            slices
+    let k = slices.work(|mut ss, size| {
+        subgraph("Sort", ss.s[0].len(), || {
+            ss.s[ss.i][0..size].sort();
+            ss
         })
     });
 
-    #[cfg(not(feature = "logs"))]
+    // #[cfg(not(feature = "logs"))]
     let mut result_slices = schedule_join_context_join(
         k,
-        &|l: SortingSlices<T>, r| l.fuse(r, block_size_fuse),
-        block_size,
-        (len as f64 / block_size as f64).log(2.0).ceil() as usize,
+        &|l: SortingSlices<T>, r| l.fuse(r, new_block_size),
+        new_block_size,
+        recursions,
     );
 
-    #[cfg(feature = "logs")]
-    let mut result_slices = schedule_join_context_join(
-        k,
-        &|l: SortingSlices<T>, r| subgraph("Fuse", 2 * l.s[0].len(), || l.fuse(r, block_size_fuse)),
-        block_size,
-        (len as f64 / block_size as f64).log(2.0).ceil() as usize,
-    );
+    // #[cfg(feature = "logs")]
+    // let mut result_slices = schedule_join_context_join(
+    //     k,
+    //     &|l: SortingSlices<T>, r| subgraph("Fuse", 2 * l.s[0].len(), || l.fuse(r, new_block_size)),
+    //     new_block_size,
+    //     recursions,
+    // );
 
     if result_slices.i != 0 {
         let i = result_slices.i;

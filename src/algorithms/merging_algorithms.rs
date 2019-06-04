@@ -2,8 +2,8 @@ use crate::prelude::*;
 // #[cfg(feature = "logs")]
 // extern crate rayon_logs as rayon;
 //
-// #[cfg(feature = "logs")]
-// use rayon_logs::subgraph;
+#[cfg(feature = "logs")]
+use rayon_logs::subgraph;
 use std::iter::repeat;
 
 /// Takes 2 slices as well as their staring index

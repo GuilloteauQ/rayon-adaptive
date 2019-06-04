@@ -13,15 +13,15 @@ use rayon_logs::subgraph;
 
 fn main() {
     let size = 50_000_000;
-    let block_size = 1_850_000;
-    let block_size_fuse = 850_000;
+    let block_size = 3_125_000;
+    let block_size_fuse = 10;
     let v: Vec<u32> = (0..size).collect();
     let mut shuffled: Vec<u32> = (0..size).collect();
 
     let mut rng = thread_rng();
     shuffled.shuffle(&mut rng);
 
-    // let mut inverted_v: Vec<u32> = (0..size).rev().collect();
+    let mut inverted: Vec<u32> = (0..size).rev().collect();
     #[cfg(feature = "logs")]
     {
         let pool = rayon_logs::ThreadPoolBuilder::new()
@@ -29,7 +29,7 @@ fn main() {
             .build()
             .expect("failed");
         let (_, log) = pool.logging_install(|| {
-            adaptive_sort_join_context_join(&mut shuffled, block_size, block_size_fuse)
+            adaptive_sort_join_context_join(&mut inverted, block_size, block_size_fuse)
         });
 
         log.save_svg("merge_sort_join_context_join_par_fuse.svg")
@@ -37,7 +37,7 @@ fn main() {
     }
     #[cfg(not(feature = "logs"))]
     {
-        adaptive_sort_join_context_join(&mut shuffled, block_size, block_size_fuse);
+        adaptive_sort_join_context_join(&mut inverted, block_size, block_size_fuse);
     }
-    assert_eq!(v, shuffled);
+    assert_eq!(v, inverted);
 }

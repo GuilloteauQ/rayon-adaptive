@@ -39,7 +39,7 @@ impl<P: Power, I: Divisible<P> + Send, W: Fn(I, usize) -> I + Send + Clone>
     type Item = I;
     type SequentialIterator = IntoIter<I>;
     fn iter(mut self, size: usize) -> (Self::SequentialIterator, Self) {
-        let final_call = self.base_length().expect("cannot fold infinite sizes") == size;
+        let final_call = self.base_length().expect("cannot fold infinite sizes") >= size;
         let new_input = (self.work_op)(self.remaining_input.take().unwrap(), size);
         (
             if final_call {
