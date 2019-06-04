@@ -6,4 +6,5 @@ pub(crate) mod merge3join;
 pub(crate) mod merge3join_2_buffers;
 pub(crate) mod merge3join_no_copy;
 pub(crate) mod merge3join_swap;
+pub(crate) mod merge_join_context_2_buffers;
 pub(crate) mod merging_algorithms;

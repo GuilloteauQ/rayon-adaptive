@@ -151,6 +151,87 @@ where
     }
 }
 
+fn schedule_join_context<P, I, ID, OP>(
+    iterator: I,
+    identity: &ID,
+    op: &OP,
+    sequential_fallback: usize,
+) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    ID: Fn() -> I::Item + Sync,
+    OP: Fn(I::Item, I::Item) -> I::Item + Sync,
+{
+    let full_length = iterator
+        .base_length()
+        .expect("running on infinite iterator");
+    if full_length <= sequential_fallback {
+        schedule_sequential(iterator, identity, op)
+    } else {
+        let (i1, i2) = iterator.divide();
+        let (r1, r2) = rayon::join_context(
+            |_| schedule_join_context(i1, identity, op, sequential_fallback),
+            |c| {
+                if c.migrated() {
+                    schedule_join_context(i2, identity, op, sequential_fallback)
+                } else {
+                    schedule_sequential(i2, identity, op)
+                }
+            },
+        );
+        op(r1, r2)
+    }
+}
+
+pub(crate) fn schedule_join_context_join<P, I, OP>(
+    iterator: I,
+    op: &OP,
+    sequential_fallback: usize,
+    recursion_level: usize,
+) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    OP: Fn(I::Item, I::Item) -> I::Item + Sync,
+{
+    let full_length = iterator
+        .base_length()
+        .expect("running on infinite iterator");
+    if full_length <= sequential_fallback {
+        let (mut seq_iter, _remaining) = iterator.iter(full_length);
+        let mut acc = seq_iter.next().unwrap();
+        while let Some(m) = seq_iter.next() {
+            acc = op(acc, m);
+        }
+        acc
+    } else {
+        let (i1, i2) = iterator.divide();
+        let (r1, r2) = if recursion_level % 2 == 0 {
+            rayon::join_context(
+                |_| schedule_join_context_join(i1, op, sequential_fallback, recursion_level - 1),
+                |c| {
+                    if c.migrated() {
+                        schedule_join_context_join(i2, op, sequential_fallback, recursion_level - 1)
+                    } else {
+                        let (mut seq_iter, _remaining) = iterator.iter(full_length);
+                        let mut acc = seq_iter.next().unwrap();
+                        while let Some(m) = seq_iter.next() {
+                            acc = op(acc, m);
+                        }
+                        acc
+                    }
+                },
+            )
+        } else {
+            rayon::join(
+                || schedule_join_context_join(i1, op, sequential_fallback, recursion_level - 1),
+                || schedule_join_context_join(i2, op, sequential_fallback, recursion_level - 1),
+            )
+        };
+        op(r1, r2)
+    }
+}
 pub(crate) fn schedule_rayon<P, I, ID, OP>(
     iterator: I,
     identity: &ID,
