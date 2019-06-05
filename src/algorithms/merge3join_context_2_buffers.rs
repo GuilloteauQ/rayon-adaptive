@@ -3,7 +3,6 @@
 // use crate::schedulers::schedule_join3;
 // use crate::utils::merge_2;
 // sort related code
-
 use crate::prelude::*;
 
 use crate::algorithms::merging_algorithms::*;
@@ -42,7 +41,6 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let mut left = self;
         let mut mid = mid;
         let mut right = right;
-        let depth = left.depth;
 
         let destination_index = {
             let destination_index = (0..2)
@@ -92,8 +90,6 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         SortingSlices {
             s: fused_slices,
             i: destination_index,
-            split_in_3: true,
-            depth: depth.min(right.depth) - 1,
         }
     }
 

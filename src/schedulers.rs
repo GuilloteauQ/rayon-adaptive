@@ -253,7 +253,8 @@ where
     acc
 }
 
-pub(crate) fn schedule_join_context3<P, I, OP>(
+/// 3-way join context using two buffers
+pub fn schedule_join_context3<P, I, OP>(
     iterator: I,
     op: &OP,
     sequential_fallback: usize,
