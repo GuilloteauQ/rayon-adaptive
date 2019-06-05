@@ -43,11 +43,11 @@ impl<'a, T: 'a + Ord + Sync + Copy + Send> SortingSlices<'a, T> {
         let mut right = right;
 
         let destination_index = {
+            assert!(left.i == mid.i && mid.i == right.i);
             let destination_index = (0..2)
                 .find(|&x| x != left.i && x != mid.i && x != right.i)
                 .unwrap();
 
-            assert!(left.i == mid.i && mid.i == right.i);
             {
                 let left_index = left.i;
                 let mid_index = mid.i;
@@ -143,8 +143,12 @@ pub fn adaptive_sort_join_context3<T: Ord + Copy + Send + Sync>(
     let recursions = (((slice_len as f64) / (block_size as f64)).log(3.0).ceil() / 2.0 - 0.5).ceil()
         as usize
         * 2;
-    let new_block_size =
-        { ((slice_len as f64) / (recursions as f64).powf(3.0)).ceil() as usize + 2 };
+    let x = (3.0_f64).powi(recursions as i32);
+    let new_block_size = { ((slice_len as f64) / x).ceil() as usize + 2 };
+    println!(
+        "n: {}, b: {}, r: {}, b': {}, x: {}",
+        slice_len, block_size, recursions, new_block_size, x
+    );
 
     #[cfg(not(feature = "logs"))]
     let k = slices.work(|mut slices, size| {
@@ -175,7 +179,7 @@ pub fn adaptive_sort_join_context3<T: Ord + Copy + Send + Sync>(
             subgraph("Fuse", 3 * l.s[0].len(), || l.fuse(m, r, new_block_size))
         },
         new_block_size,
-        recursions,
+        recursions + 1,
     );
 
     if result_slices.i != 0 {

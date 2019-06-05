@@ -279,7 +279,7 @@ where
             work_blocks.next().unwrap(),
             work_blocks.next().unwrap(),
         );
-        let ((result_left, result_mid), result_right) = if recursion_level % 2 == 1 {
+        let ((result_left, result_mid), result_right) = if recursion_level % 2 == 0 {
             rayon::join_context(
                 |_| {
                     rayon::join_context(

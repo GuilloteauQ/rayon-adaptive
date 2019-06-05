@@ -14,8 +14,8 @@ use rayon_logs::subgraph;
 
 fn main() {
     let size = 50_000_000;
-    let block_size = 1_850_000;
-    let block_size_fuse = 850_000;
+    let block_size = 50_000;
+    let block_size_fuse = 50_000;
     let v: Vec<u32> = (0..size).collect();
     let mut shuffled: Vec<u32> = (0..size).collect();
 
