@@ -233,6 +233,114 @@ where
         op(r1, r2)
     }
 }
+
+fn seq_by3<I, P, OP>(iterator: I, op: &OP) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    OP: Fn(I::Item, I::Item, I::Item) -> I::Item + Sync,
+{
+    let full_length = iterator.base_length().unwrap();
+    let (mut seq_iter, _remaining) = iterator.iter(full_length);
+    let mut acc = seq_iter.next().unwrap();
+    while let Some(m) = seq_iter.next() {
+        let r = match seq_iter.next() {
+            Some(r) => r,
+            None => break,
+        };
+        acc = op(acc, m, r);
+    }
+    acc
+}
+
+pub(crate) fn schedule_join_context3<P, I, OP>(
+    iterator: I,
+    op: &OP,
+    sequential_fallback: usize,
+    recursion_level: usize,
+) -> I::Item
+where
+    P: Power,
+    I: ParallelIterator<P>,
+    OP: Fn(I::Item, I::Item, I::Item) -> I::Item + Sync,
+{
+    let full_length = iterator
+        .base_length()
+        .expect("running on infinite iterator");
+    if full_length <= sequential_fallback {
+        seq_by3(iterator, op)
+    } else {
+        let block = full_length / 3;
+        let block_sizes = vec![block, block, full_length - 2 * block];
+        let mut work_blocks = iterator.blocks(block_sizes.into_iter());
+        let (left, mid, right) = (
+            work_blocks.next().unwrap(),
+            work_blocks.next().unwrap(),
+            work_blocks.next().unwrap(),
+        );
+        let ((result_left, result_mid), result_right) = if recursion_level % 2 == 1 {
+            rayon::join_context(
+                |_| {
+                    rayon::join_context(
+                        |_| {
+                            schedule_join_context3(
+                                left,
+                                op,
+                                sequential_fallback,
+                                recursion_level - 1,
+                            )
+                        },
+                        |c| {
+                            if c.migrated() {
+                                schedule_join_context3(
+                                    mid,
+                                    op,
+                                    sequential_fallback,
+                                    recursion_level - 1,
+                                )
+                            } else {
+                                seq_by3(mid, op)
+                            }
+                        },
+                    )
+                },
+                |c| {
+                    if c.migrated() {
+                        schedule_join_context3(right, op, sequential_fallback, recursion_level - 1)
+                    } else {
+                        seq_by3(right, op)
+                    }
+                },
+            )
+        } else {
+            rayon::join(
+                || {
+                    rayon::join(
+                        || {
+                            schedule_join_context3(
+                                left,
+                                op,
+                                sequential_fallback,
+                                recursion_level - 1,
+                            )
+                        },
+                        || {
+                            schedule_join_context3(
+                                mid,
+                                op,
+                                sequential_fallback,
+                                recursion_level - 1,
+                            )
+                        },
+                    )
+                },
+                || schedule_join_context3(right, op, sequential_fallback, recursion_level - 1),
+            )
+        };
+        op(result_left, result_mid, result_right)
+    }
+}
+
 pub(crate) fn schedule_rayon<P, I, ID, OP>(
     iterator: I,
     identity: &ID,
